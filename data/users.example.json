@@ -1,0 +1,14 @@
+{
+  "UID001": {
+    "display_name": "Alice Example",
+    "person_id": "user_001",
+    "support_set_path": "data/support_set/user_001",
+    "allowed": true
+  },
+  "UID002": {
+    "display_name": "Bob Example",
+    "person_id": "user_002",
+    "support_set_path": "data/support_set/user_002",
+    "allowed": true
+  }
+}
