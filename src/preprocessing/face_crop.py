@@ -1,5 +1,5 @@
 """
-Face detection and cropping from extracted frames.
+Detección y recorte de caras desde fotogramas extraídos.
 
 Input:  data/processed/<person_id>/<view_name>/frames/<frame_file>.jpg
 Output: data/processed/<person_id>/<view_name>/faces/<face_file>.jpg

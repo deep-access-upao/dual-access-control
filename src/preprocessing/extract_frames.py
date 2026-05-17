@@ -1,5 +1,5 @@
 """
-Frame extraction from raw videos.
+Extracción de fotogramas desde videos crudos.
 
 Input:  data/raw/<person_id>/<view_name>/<video_file>
 Output: data/processed/<person_id>/<view_name>/frames/frame_XXXXXX.jpg
