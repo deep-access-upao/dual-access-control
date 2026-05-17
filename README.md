@@ -1,21 +1,51 @@
 # Sistema de Control de Acceso Dual
 
-Proyecto universitario del curso de Deep Learning. Consiste en un prototipo de control de acceso de doble factor que combina identificación por RFID con verificación facial mediante una Red Neuronal Siamesa y One-Shot Learning.
+Proyecto universitario del curso de Deep Learning. Consiste en un prototipo de control de acceso de doble factor que combina identificación por RFID con verificación facial mediante una **Red Neuronal Siamesa** con aprendizaje One-Shot/Few-Shot. A diferencia de un clasificador facial tradicional, la Red Siamesa no predice identidades directamente: aprende a medir la similitud entre pares de imágenes, lo que permite verificar usuarios nuevos sin reentrenar el modelo. El sistema corre en la laptop con Python y admite verificación facial multi-vista usando una sola cámara web.
 
 ## Funcionamiento general
 
 1. El usuario presenta su tarjeta RFID. En la primera fase, este proceso será simulado; en una fase posterior, se usará un lector RFID real conectado al ESP32.
 2. Si el UID del RFID es reconocido, la laptop captura una imagen del rostro mediante la cámara web.
-3. La Red Siamesa compara el rostro capturado con una imagen de referencia almacenada en el `support_set`.
+3. La Red Siamesa compara el rostro capturado contra todas las imágenes de referencia disponibles para ese usuario en el `support_set` y utiliza la puntuación de similitud máxima.
 4. La laptop determina si el acceso es concedido o denegado.
 5. En la segunda fase, la laptop enviará `GRANTED` o `DENIED` al ESP32 mediante comunicación serial USB.
 6. El ESP32 activará un servomotor si el acceso es concedido o un buzzer si el acceso es denegado.
+
+## Verificación facial multi-vista
+
+El sistema utiliza una única cámara web para capturar el rostro del usuario. No se requieren múltiples cámaras.
+
+### Vistas soportadas
+
+| Vista | Descripción |
+|-------|-------------|
+| `frontal` | Rostro de frente |
+| `left` | Perfil o giro hacia la izquierda |
+| `right` | Perfil o giro hacia la derecha |
+| `mixed` | Combinación de vistas en el conjunto de entrenamiento |
+
+### Support set por usuario
+
+Cada usuario autorizado puede tener hasta tres imágenes de referencia en su carpeta dentro de `data/support_set/`:
+
+```text
+data/support_set/<nombre_usuario>/
+├── frontal.jpg
+├── left.jpg
+└── right.jpg
+```
+
+No es obligatorio contar con las tres vistas; el sistema opera con las referencias disponibles.
+
+### Estrategia de inferencia
+
+Durante la verificación, la Red Siamesa compara el rostro capturado contra **todas** las referencias disponibles para el usuario asociado al UID del RFID. El acceso se concede o deniega según la **puntuación de similitud máxima** obtenida entre el rostro capturado y cualquiera de las referencias.
 
 ## Fases del proyecto
 
 | Fase | Descripción | Estado |
 |------|-------------|--------|
-| 1 | Laptop + cámara web + modelo siamesa + RFID simulado | En progreso |
+| 1 | Laptop + cámara web + modelo siamesa + RFID simulado + verificación multi-vista | En progreso |
 | 2 | Laptop + cámara web + modelo + ESP32 con servomotor/buzzer | Pendiente |
 | 3 | ESP32 lee RFID real y envía el UID a la laptop | Pendiente |
 | 4 | Conversión opcional a TensorFlow Lite o despliegue embebido | Futuro |
@@ -41,7 +71,7 @@ dual-access-control/
 │   ├── raw/            # Videos e imágenes originales (privados, no se suben al repositorio)
 │   ├── processed/      # Rostros recortados y redimensionados (privados, no se suben)
 │   ├── pairs/          # Pares positivos y negativos para entrenamiento (privados, no se suben)
-│   └── support_set/    # Una imagen de referencia por usuario autorizado (privado, no se sube)
+│   └── support_set/    # Imágenes de referencia por usuario (frontal, left, right); privado, no se sube
 ├── docs/               # Documentación, notas técnicas y diagramas del proyecto
 ├── esp32/
 │   ├── servo_buzzer_controller/  # Código Arduino para controlar servomotor y buzzer
@@ -98,13 +128,13 @@ En la primera fase, el sistema funcionará completamente desde la laptop, sin de
 
 Objetivos de esta fase:
 
-- Recolectar videos o imágenes faciales del equipo.
+- Recolectar imágenes o videos faciales del equipo en vistas frontal, lateral izquierda, lateral derecha y mixta.
 - Preprocesar las imágenes a una resolución de 112×112 píxeles.
-- Generar pares positivos y negativos para entrenar la Red Siamesa.
+- Generar pares positivos (misma persona, distintas vistas) y negativos (personas diferentes) para entrenar la Red Siamesa.
 - Definir y entrenar el modelo de Deep Learning.
 - Simular el UID de una tarjeta RFID.
 - Capturar el rostro en tiempo real usando la cámara web.
-- Comparar el rostro capturado con la imagen de referencia del usuario.
+- Comparar el rostro capturado contra todas las referencias multi-vista del usuario y usar la puntuación máxima.
 - Mostrar en consola si el acceso fue concedido o denegado.
 
 ## Integración con hardware: Fase 2 y posteriores
