@@ -15,7 +15,7 @@ SUPPORT_SET_DIR = DATA_DIR / "support_set"
 
 # models/
 MODELS_DIR = PROJECT_ROOT / "models"
-SAVED_MODEL_DIR = MODELS_DIR / "saved"
+SAVED_MODEL_DIR = MODELS_DIR / "saved_model"
 TFLITE_MODEL_DIR = MODELS_DIR / "tflite"
 
 # outputs/
