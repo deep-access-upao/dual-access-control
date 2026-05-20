@@ -15,13 +15,18 @@ import numpy as np
 from src.config import (
     PROCESSED_DATASET_DIR,
     SUPPORTED_FACE_VIEWS,
-    IMAGE_SIZE,
     IMAGE_WIDTH,
     IMAGE_HEIGHT,
 )
 
 SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 DEFAULT_MARGIN = 0.20
+
+# Área mínima de la detección como fracción del frame (filtra falsos positivos pequeños)
+MIN_FACE_AREA_RATIO = 0.01
+MIN_FACE_SIZE = (60, 60)
+FRONTAL_MIN_NEIGHBORS = 5
+PROFILE_MIN_NEIGHBORS = 4
 
 
 def parse_args() -> argparse.Namespace:
@@ -42,12 +47,19 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def get_face_detector() -> cv2.CascadeClassifier:
-    cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    detector = cv2.CascadeClassifier(cascade_path)
-    if detector.empty():
-        raise RuntimeError(f"No se pudo cargar el clasificador Haar: {cascade_path}")
-    return detector
+def get_face_detectors() -> tuple[cv2.CascadeClassifier, cv2.CascadeClassifier]:
+    frontal_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    profile_path = cv2.data.haarcascades + "haarcascade_profileface.xml"
+
+    frontal = cv2.CascadeClassifier(frontal_path)
+    profile = cv2.CascadeClassifier(profile_path)
+
+    if frontal.empty():
+        raise RuntimeError(f"No se pudo cargar el clasificador frontal: {frontal_path}")
+    if profile.empty():
+        raise RuntimeError(f"No se pudo cargar el clasificador de perfil: {profile_path}")
+
+    return frontal, profile
 
 
 def find_frame_files(processed_dir: Path) -> list[tuple[str, str, Path]]:
@@ -76,6 +88,72 @@ def find_frame_files(processed_dir: Path) -> list[tuple[str, str, Path]]:
     return entries
 
 
+def detect_largest_face(
+    gray: np.ndarray,
+    detector: cv2.CascadeClassifier,
+    min_neighbors: int,
+    flip: bool = False,
+) -> tuple[int, int, int, int] | None:
+    """
+    Detecta la cara de mayor área en la imagen en escala de grises.
+    Si flip=True, espeja la imagen antes de detectar y corrige las coordenadas al espacio original.
+    Descarta detecciones cuya área sea menor que MIN_FACE_AREA_RATIO del frame.
+    Retorna (x, y, w, h) o None si no hay cara válida.
+    """
+    img_h, img_w = gray.shape[:2]
+    min_area = img_h * img_w * MIN_FACE_AREA_RATIO
+
+    source = cv2.flip(gray, 1) if flip else gray
+
+    faces = detector.detectMultiScale(
+        source, scaleFactor=1.1, minNeighbors=min_neighbors, minSize=MIN_FACE_SIZE
+    )
+
+    if len(faces) == 0:
+        return None
+
+    valid = [(x, y, w, h) for x, y, w, h in faces if w * h >= min_area]
+    if not valid:
+        return None
+
+    x, y, w, h = max(valid, key=lambda f: f[2] * f[3])
+
+    if flip:
+        x = img_w - x - w
+
+    return x, y, w, h
+
+
+def find_face_for_view(
+    gray: np.ndarray,
+    view_name: str,
+    frontal_detector: cv2.CascadeClassifier,
+    profile_detector: cv2.CascadeClassifier,
+) -> tuple[int, int, int, int] | None:
+    """
+    Selecciona el cascade adecuado según la vista y devuelve el bounding box de la cara principal.
+    Para vistas de perfil, intenta el cascade frontal como respaldo.
+    """
+    if view_name in ("frontal", "mixed"):
+        return detect_largest_face(gray, frontal_detector, FRONTAL_MIN_NEIGHBORS)
+
+    if view_name == "right":
+        # Perfil derecho: la cara mira hacia la izquierda en la imagen
+        result = detect_largest_face(gray, profile_detector, PROFILE_MIN_NEIGHBORS)
+        if result is None:
+            result = detect_largest_face(gray, frontal_detector, FRONTAL_MIN_NEIGHBORS)
+        return result
+
+    if view_name == "left":
+        # Perfil izquierdo: la cara mira hacia la derecha — se detecta espejando
+        result = detect_largest_face(gray, profile_detector, PROFILE_MIN_NEIGHBORS, flip=True)
+        if result is None:
+            result = detect_largest_face(gray, frontal_detector, FRONTAL_MIN_NEIGHBORS)
+        return result
+
+    return detect_largest_face(gray, frontal_detector, FRONTAL_MIN_NEIGHBORS)
+
+
 def crop_with_margin(
     image: np.ndarray, x: int, y: int, w: int, h: int, margin: float
 ) -> np.ndarray:
@@ -99,7 +177,9 @@ def crop_with_margin(
 def process_frame(
     frame_path: Path,
     output_path: Path,
-    detector: cv2.CascadeClassifier,
+    view_name: str,
+    frontal_detector: cv2.CascadeClassifier,
+    profile_detector: cv2.CascadeClassifier,
     margin: float,
     overwrite: bool,
 ) -> str:
@@ -116,16 +196,12 @@ def process_frame(
         return "skipped_no_face"
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    faces = detector.detectMultiScale(
-        gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
-    )
+    face = find_face_for_view(gray, view_name, frontal_detector, profile_detector)
 
-    if len(faces) == 0:
+    if face is None:
         return "skipped_no_face"
 
-    # Elegir la cara de mayor área cuando hay varias detectadas
-    x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
-
+    x, y, w, h = face
     cropped = crop_with_margin(image, x, y, w, h, margin)
     resized = cv2.resize(cropped, (IMAGE_WIDTH, IMAGE_HEIGHT))
 
@@ -137,7 +213,8 @@ def process_frame(
 
 def process_dataset(
     frame_entries: list[tuple[str, str, Path]],
-    detector: cv2.CascadeClassifier,
+    frontal_detector: cv2.CascadeClassifier,
+    profile_detector: cv2.CascadeClassifier,
     margin: float,
     overwrite: bool,
 ) -> dict:
@@ -158,7 +235,11 @@ def process_dataset(
         faces_dir = frame_path.parent.parent / "faces"
         output_path = faces_dir / frame_path.name
 
-        result = process_frame(frame_path, output_path, detector, margin, overwrite)
+        result = process_frame(
+            frame_path, output_path, view_name,
+            frontal_detector, profile_detector,
+            margin, overwrite,
+        )
 
         if result == "saved":
             stats["faces_saved"] += 1
@@ -189,11 +270,11 @@ def main() -> None:
     print(f"Personas encontradas  : {len(people)}")
     print(f"Fotogramas encontrados: {len(frame_entries)}")
     print(f"Margen de recorte     : {args.margin}")
-    print(f"Sobreescribir         : {'sí' if args.overwrite else 'no'}")
+    print(f"Sobreescribir         : {'si' if args.overwrite else 'no'}")
     print()
 
-    detector = get_face_detector()
-    stats = process_dataset(frame_entries, detector, args.margin, args.overwrite)
+    frontal_detector, profile_detector = get_face_detectors()
+    stats = process_dataset(frame_entries, frontal_detector, profile_detector, args.margin, args.overwrite)
 
     print()
     print("=== Resumen ===")
