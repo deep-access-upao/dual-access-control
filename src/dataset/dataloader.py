@@ -2,6 +2,7 @@ import pandas as pd
 import tensorflow as tf
 from pathlib import Path
 
+from src.dataset.augmentations import augment_face_image
 from src.config import (
     IMAGE_HEIGHT,
     IMAGE_WIDTH,
@@ -23,9 +24,20 @@ def load_image(path: str) -> tf.Tensor:
     return image
 
 
-def load_pair(path_a: str, path_b: str, label: int):
+def load_pair(
+    path_a: str,
+    path_b: str,
+    label: int,
+    *,
+    augment: bool = False,
+    seed: tf.Tensor | tuple[int, int] = (42, 0),
+):
     image_a = load_image(path_a)
     image_b = load_image(path_b)
+    if augment:
+        branch_seeds = tf.random.experimental.stateless_split(seed, num=2)
+        image_a = augment_face_image(image_a, seed=branch_seeds[0])
+        image_b = augment_face_image(image_b, seed=branch_seeds[1])
     label_tensor = tf.cast(label, tf.float32)
     return (image_a, image_b), label_tensor
 
@@ -34,7 +46,11 @@ def create_pairs_dataset(
     csv_path: Path,
     batch_size: int = 32,
     shuffle: bool = True,
+    augment: bool = False,
+    seed: int = 42,
+    deterministic: bool = True,
 ) -> tf.data.Dataset:
+    """Create a pair dataset, optionally augmenting both branches independently."""
     _require_csv(csv_path)
 
     df = pd.read_csv(csv_path)
@@ -45,27 +61,57 @@ def create_pairs_dataset(
     dataset = tf.data.Dataset.from_tensor_slices((paths_a, paths_b, labels))
 
     if shuffle:
-        dataset = dataset.shuffle(buffer_size=len(df), reshuffle_each_iteration=True)
+        dataset = dataset.shuffle(
+            buffer_size=max(len(df), 1),
+            seed=seed,
+            reshuffle_each_iteration=True,
+        )
 
+    dataset = dataset.enumerate()
     dataset = dataset.map(
-        lambda a, b, lbl: load_pair(a, b, lbl),
+        lambda index, values: load_pair(
+            values[0],
+            values[1],
+            values[2],
+            augment=augment,
+            seed=tf.stack([tf.cast(seed, tf.int32), tf.cast(index, tf.int32)]),
+        ),
         num_parallel_calls=tf.data.AUTOTUNE,
+        deterministic=deterministic,
     )
     dataset = dataset.batch(batch_size)
+    options = tf.data.Options()
+    options.experimental_deterministic = deterministic
+    dataset = dataset.with_options(options)
     dataset = dataset.prefetch(tf.data.AUTOTUNE)
     return dataset
 
 
-def get_train_dataset(batch_size: int = 32) -> tf.data.Dataset:
-    return create_pairs_dataset(TRAIN_CSV, batch_size=batch_size, shuffle=True)
+def get_train_dataset(
+    batch_size: int = 32,
+    *,
+    augment: bool = True,
+    seed: int = 42,
+) -> tf.data.Dataset:
+    return create_pairs_dataset(
+        TRAIN_CSV,
+        batch_size=batch_size,
+        shuffle=True,
+        augment=augment,
+        seed=seed,
+    )
 
 
 def get_val_dataset(batch_size: int = 32) -> tf.data.Dataset:
-    return create_pairs_dataset(VAL_CSV, batch_size=batch_size, shuffle=False)
+    return create_pairs_dataset(
+        VAL_CSV, batch_size=batch_size, shuffle=False, augment=False
+    )
 
 
 def get_test_dataset(batch_size: int = 32) -> tf.data.Dataset:
-    return create_pairs_dataset(TEST_CSV, batch_size=batch_size, shuffle=False)
+    return create_pairs_dataset(
+        TEST_CSV, batch_size=batch_size, shuffle=False, augment=False
+    )
 
 
 def _require_csv(path: Path) -> None:

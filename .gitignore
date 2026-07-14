@@ -35,6 +35,8 @@ models/tflite/*
 outputs/plots/*
 outputs/metrics/*
 outputs/logs/*
+outputs/augmentation_preview/*
+outputs/stress_tests_preview/*
 
 !outputs/plots/.gitkeep
 !outputs/metrics/.gitkeep
