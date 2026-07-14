@@ -1,26 +1,22 @@
-"""
-Genera pares positivos y negativos de imágenes para el entrenamiento de la red Siamesa.
+"""Genera pares dentro de splits de imágenes ya asignados.
 
-Lee imágenes de data/processed y escribe los CSV en data/pairs:
-    data/pairs/train_pairs.csv
-    data/pairs/val_pairs.csv
-    data/pairs/test_pairs.csv
+Orden obligatorio del protocolo: build_manifest -> build_splits -> build_pairs.
+Nunca se construyen pares entre splits y la clave canónica ignora el orden A/B.
+El muestreo reparte positivos entre identidades y negativos entre combinaciones
+de identidades para limitar el sesgo de las personas con más imágenes.
 """
+
+from __future__ import annotations
 
 import argparse
 import csv
 import itertools
 import random
+from collections import defaultdict
 from pathlib import Path
 
-from src.config import (
-    PAIRS_DIR,
-    PROCESSED_DATASET_DIR,
-    PROJECT_ROOT,
-    SUPPORTED_FACE_VIEWS,
-)
-
-FACE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+from src.config import DATASET_MANIFEST_PATH, PAIRS_DIR
+from src.dataset.build_splits import SPLITS, read_manifest
 
 CSV_COLUMNS = [
     "image_a",
@@ -28,273 +24,208 @@ CSV_COLUMNS = [
     "label",
     "person_a",
     "person_b",
+    "source_video_a",
+    "source_video_b",
     "view_a",
     "view_b",
     "split",
 ]
 
-TRAIN_RATIO = 0.80
-VAL_RATIO = 0.10
-# test recibe el resto: 1.0 - TRAIN_RATIO - VAL_RATIO
-
+DEFAULT_PAIR_COUNTS = {"train": 4000, "validation": 500, "test": 500}
 DEFAULT_SEED = 42
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Genera pares positivos y negativos para el entrenamiento de la red Siamesa."
-    )
-    parser.add_argument(
-        "--max-pairs",
-        type=int,
-        default=None,
-        metavar="N",
-        help="Número máximo total de pares (positivos + negativos). Por defecto: ilimitado.",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=DEFAULT_SEED,
-        help=f"Semilla aleatoria para reproducibilidad. Por defecto: {DEFAULT_SEED}.",
-    )
-    parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Sobreescribir archivos CSV existentes en data/pairs.",
-    )
+    parser = argparse.ArgumentParser(description="Genera pares balanceados después del split.")
+    parser.add_argument("--manifest", type=Path, default=DATASET_MANIFEST_PATH)
+    parser.add_argument("--output-dir", type=Path, default=PAIRS_DIR)
+    parser.add_argument("--train-pairs", type=int, default=DEFAULT_PAIR_COUNTS["train"])
+    parser.add_argument("--validation-pairs", type=int, default=DEFAULT_PAIR_COUNTS["validation"])
+    parser.add_argument("--test-pairs", type=int, default=DEFAULT_PAIR_COUNTS["test"])
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
 
 
-def collect_face_images(
-    processed_dir: Path,
-    supported_views: list[str],
-) -> dict[str, dict[str, list[Path]]]:
-    """
-    Retorna {person_id: {view_name: [absolute_path, ...]}}
-    Solo incluye vistas con al menos una imagen de cara presente.
-    """
-    people: dict[str, dict[str, list[Path]]] = {}
+def pair_key(image_a: str, image_b: str) -> tuple[str, str]:
+    return tuple(sorted((image_a, image_b)))
 
-    if not processed_dir.exists():
-        return people
 
-    for person_dir in sorted(processed_dir.iterdir()):
-        if not person_dir.is_dir():
-            continue
+def allocate_evenly(total: int, keys: list[object]) -> dict[object, int]:
+    if not keys:
+        return {}
+    base, remainder = divmod(total, len(keys))
+    return {key: base + (index < remainder) for index, key in enumerate(keys)}
 
-        views: dict[str, list[Path]] = {}
 
-        for view_dir in sorted(person_dir.iterdir()):
-            if not view_dir.is_dir() or view_dir.name not in supported_views:
+def make_row(a: dict[str, str], b: dict[str, str], label: int, split: str) -> dict[str, object]:
+    if a["image_path"] > b["image_path"]:
+        a, b = b, a
+    return {
+        "image_a": a["image_path"],
+        "image_b": b["image_path"],
+        "label": label,
+        "person_a": a["person_id"],
+        "person_b": b["person_id"],
+        "source_video_a": a["source_video"],
+        "source_video_b": b["source_video"],
+        "view_a": a["view"],
+        "view_b": b["view"],
+        "split": split,
+    }
+
+
+def positive_pairs(
+    rows: list[dict[str, str]], target: int, split: str, rng: random.Random
+) -> list[dict[str, object]]:
+    by_person: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for row in rows:
+        by_person[row["person_id"]].append(row)
+
+    candidates: dict[str, list[tuple[dict[str, str], dict[str, str]]]] = {}
+    for person_id, images in sorted(by_person.items()):
+        pairs = list(itertools.combinations(sorted(images, key=lambda row: row["image_path"]), 2))
+        rng.shuffle(pairs)
+        if pairs:
+            candidates[person_id] = pairs
+
+    people = list(candidates)
+    rng.shuffle(people)
+    quotas = allocate_evenly(target, people)
+    selected: list[dict[str, object]] = []
+    shortage = 0
+    for person_id in people:
+        take = min(quotas[person_id], len(candidates[person_id]))
+        selected.extend(make_row(a, b, 1, split) for a, b in candidates[person_id][:take])
+        shortage += quotas[person_id] - take
+
+    if shortage:
+        remaining = [pair for person_id in people for pair in candidates[person_id][quotas[person_id]:]]
+        rng.shuffle(remaining)
+        selected.extend(make_row(a, b, 1, split) for a, b in remaining[:shortage])
+    return selected[:target]
+
+
+def sample_product(
+    images_a: list[dict[str, str]],
+    images_b: list[dict[str, str]],
+    target: int,
+    rng: random.Random,
+) -> list[tuple[dict[str, str], dict[str, str]]]:
+    capacity = len(images_a) * len(images_b)
+    if target >= capacity:
+        pairs = list(itertools.product(images_a, images_b))
+        rng.shuffle(pairs)
+        return pairs
+
+    chosen: set[tuple[int, int]] = set()
+    while len(chosen) < target:
+        chosen.add((rng.randrange(len(images_a)), rng.randrange(len(images_b))))
+    return [(images_a[i], images_b[j]) for i, j in chosen]
+
+
+def negative_pairs(
+    rows: list[dict[str, str]], target: int, split: str, rng: random.Random
+) -> list[dict[str, object]]:
+    by_person: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for row in rows:
+        by_person[row["person_id"]].append(row)
+    person_pairs = list(itertools.combinations(sorted(by_person), 2))
+    rng.shuffle(person_pairs)
+    quotas = allocate_evenly(target, person_pairs)
+
+    selected: list[dict[str, object]] = []
+    shortage = 0
+    for person_a, person_b in person_pairs:
+        images_a = by_person[person_a]
+        images_b = by_person[person_b]
+        quota = quotas[(person_a, person_b)]
+        sampled = sample_product(images_a, images_b, min(quota, len(images_a) * len(images_b)), rng)
+        selected.extend(make_row(a, b, 0, split) for a, b in sampled)
+        shortage += quota - len(sampled)
+
+    if shortage:
+        existing = {pair_key(str(row["image_a"]), str(row["image_b"])) for row in selected}
+        attempts = 0
+        max_attempts = max(1000, shortage * 100)
+        people = sorted(by_person)
+        while shortage and attempts < max_attempts:
+            attempts += 1
+            person_a, person_b = rng.sample(people, 2)
+            a, b = rng.choice(by_person[person_a]), rng.choice(by_person[person_b])
+            key = pair_key(a["image_path"], b["image_path"])
+            if key in existing:
                 continue
-
-            faces_dir = view_dir / "faces"
-            if not faces_dir.is_dir():
-                continue
-
-            images = [
-                f
-                for f in sorted(faces_dir.iterdir())
-                if f.is_file() and f.suffix.lower() in FACE_EXTENSIONS
-            ]
-
-            if images:
-                views[view_dir.name] = images
-
-        if views:
-            people[person_dir.name] = views
-
-    return people
+            existing.add(key)
+            selected.append(make_row(a, b, 0, split))
+            shortage -= 1
+    return selected[:target]
 
 
-def generate_positive_pairs(
-    people: dict[str, dict[str, list[Path]]],
-    rng: random.Random,
-) -> list[tuple]:
-    """
-    Retorna todos los pares únicos de la misma persona entre todas las vistas disponibles.
-    Incluye pares de la misma vista y de vistas distintas (frontal-left, etc.).
-    """
-    pairs: list[tuple] = []
-
-    for person_id, views in people.items():
-        # Aplanar imágenes de la persona junto con su vista de origen
-        all_images: list[tuple[Path, str]] = [
-            (img, view_name)
-            for view_name, images in views.items()
-            for img in images
-        ]
-
-        for (img_a, view_a), (img_b, view_b) in itertools.combinations(all_images, 2):
-            pairs.append((img_a, img_b, person_id, person_id, view_a, view_b))
-
-    rng.shuffle(pairs)
-    return pairs
+def generate_split_pairs(
+    rows: list[dict[str, str]], target: int, split: str, seed: int
+) -> list[dict[str, object]]:
+    if target < 2:
+        raise ValueError(f"{split}: se requieren al menos 2 pares.")
+    rng = random.Random(f"{seed}:{split}")
+    positive_target = target // 2
+    negative_target = target - positive_target
+    positives = positive_pairs(rows, positive_target, split, rng)
+    negatives = negative_pairs(rows, negative_target, split, rng)
+    if len(positives) != positive_target or len(negatives) != negative_target:
+        raise ValueError(
+            f"{split}: combinaciones insuficientes; solicitadas {positive_target}/{negative_target} "
+            f"positivas/negativas, disponibles {len(positives)}/{len(negatives)}."
+        )
+    result = positives + negatives
+    rng.shuffle(result)
+    return result
 
 
-def generate_negative_pairs(
-    people: dict[str, dict[str, list[Path]]],
-    n_pairs: int,
-    rng: random.Random,
-) -> list[tuple]:
-    """
-    Retorna hasta n_pairs de personas distintas usando muestreo aleatorio.
-    Usa un conjunto seen para evitar duplicados exactos.
-    """
-    person_ids = list(people.keys())
-    pairs: list[tuple] = []
-    seen: set[tuple[str, str]] = set()
-
-    # Límite de intentos para datasets pequeños con pocas combinaciones únicas
-    max_attempts = n_pairs * 20
-    attempts = 0
-
-    while len(pairs) < n_pairs and attempts < max_attempts:
-        attempts += 1
-
-        person_a, person_b = rng.sample(person_ids, 2)
-        view_a = rng.choice(list(people[person_a].keys()))
-        view_b = rng.choice(list(people[person_b].keys()))
-        img_a = rng.choice(people[person_a][view_a])
-        img_b = rng.choice(people[person_b][view_b])
-
-        key = (str(img_a), str(img_b))
-        if key in seen:
-            continue
-
-        seen.add(key)
-        pairs.append((img_a, img_b, person_a, person_b, view_a, view_b))
-
-    return pairs
+def output_path(output_dir: Path, split: str) -> Path:
+    # Se conserva val_pairs.csv por compatibilidad con entrenamiento/notebooks
+    # existentes; la columna interna usa el nombre explícito "validation".
+    filename_split = "val" if split == "validation" else split
+    return output_dir / f"{filename_split}_pairs.csv"
 
 
-def split_pairs(
-    pairs: list[tuple],
-    rng: random.Random,
-) -> list[tuple]:
-    """
-    Mezcla los pares y asigna la etiqueta de split ('train', 'val', 'test').
-    Retorna una lista de tuplas con el split añadido al final.
-    """
-    shuffled = pairs[:]
-    rng.shuffle(shuffled)
-
-    n = len(shuffled)
-    n_train = int(n * TRAIN_RATIO)
-    n_val = int(n * VAL_RATIO)
-
-    labeled: list[tuple] = []
-    for i, pair in enumerate(shuffled):
-        if i < n_train:
-            split = "train"
-        elif i < n_train + n_val:
-            split = "val"
-        else:
-            split = "test"
-        labeled.append(pair + (split,))
-
-    return labeled
-
-
-def write_pairs_csv(
-    labeled_pairs: list[tuple],
-    pairs_dir: Path,
-    project_root: Path,
-) -> None:
-    """
-    Escribe train_pairs.csv, val_pairs.csv y test_pairs.csv en pairs_dir.
-    Las rutas de imagen son relativas a project_root.
-    """
-    pairs_dir.mkdir(parents=True, exist_ok=True)
-
-    by_split: dict[str, list[dict]] = {"train": [], "val": [], "test": []}
-
-    for img_a, img_b, person_a, person_b, view_a, view_b, split in labeled_pairs:
-        label = 1 if person_a == person_b else 0
-        row = {
-            "image_a": img_a.relative_to(project_root).as_posix(),
-            "image_b": img_b.relative_to(project_root).as_posix(),
-            "label": label,
-            "person_a": person_a,
-            "person_b": person_b,
-            "view_a": view_a,
-            "view_b": view_b,
-            "split": split,
-        }
-        by_split[split].append(row)
-
-    for split_name, rows in by_split.items():
-        csv_path = pairs_dir / f"{split_name}_pairs.csv"
-        with open(csv_path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
-            writer.writeheader()
-            writer.writerows(rows)
-        print(f"  {len(rows):>5} pares → {csv_path.relative_to(project_root).as_posix()}")
+def write_pairs(rows: list[dict[str, object]], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=CSV_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def main() -> None:
     args = parse_args()
-    rng = random.Random(args.seed)
+    counts = {
+        "train": args.train_pairs,
+        "validation": args.validation_pairs,
+        "test": args.test_pairs,
+    }
+    paths = [output_path(args.output_dir, split) for split in SPLITS]
+    if not args.overwrite and any(path.exists() for path in paths):
+        existing = ", ".join(str(path) for path in paths if path.exists())
+        raise SystemExit(f"ERROR: ya existen CSV ({existing}). Usa --overwrite.")
 
-    # Verificar si los CSV ya existen cuando --overwrite no fue indicado
-    if not args.overwrite:
-        existing = [
-            p
-            for p in [
-                PAIRS_DIR / "train_pairs.csv",
-                PAIRS_DIR / "val_pairs.csv",
-                PAIRS_DIR / "test_pairs.csv",
-            ]
-            if p.exists()
-        ]
-        if existing:
-            print("Los archivos CSV ya existen. Usa --overwrite para reemplazarlos:")
-            for p in existing:
-                print(f"  {p.relative_to(PROJECT_ROOT).as_posix()}")
-            return
+    manifest = read_manifest(args.manifest)
+    usable = [row for row in manifest if row["status"] == "usable"]
+    if any(not row["split"] for row in usable):
+        raise SystemExit("ERROR: hay imágenes usables sin split. Ejecuta primero build_splits.")
 
-    print(f"Analizando: {PROCESSED_DATASET_DIR.relative_to(PROJECT_ROOT).as_posix()}")
-    people = collect_face_images(PROCESSED_DATASET_DIR, SUPPORTED_FACE_VIEWS)
-
-    if len(people) < 2:
-        print(
-            f"No hay suficientes personas en los datos procesados "
-            f"(encontradas: {len(people)}, se necesitan al menos 2). "
-            f"Ejecuta el preprocesamiento primero."
-        )
-        return
-
-    total_images = sum(len(imgs) for views in people.values() for imgs in views.values())
-    print(f"Personas encontradas: {len(people)}, imágenes de cara: {total_images}.")
-
-    positive_pairs = generate_positive_pairs(people, rng)
-
-    if not positive_pairs:
-        print("No se generaron pares positivos. Cada persona necesita al menos 2 imágenes de cara.")
-        return
-
-    # Determinar cuántos pares generar por clase para mantener el balance
-    if args.max_pairs is not None:
-        target_per_class = max(1, args.max_pairs // 2)
-    else:
-        target_per_class = len(positive_pairs)
-
-    positive_pairs = positive_pairs[:target_per_class]
-    negative_pairs = generate_negative_pairs(people, target_per_class, rng)
-
-    if not negative_pairs:
-        print("No se pudieron generar pares negativos. Se necesitan al menos 2 personas con imágenes de cara.")
-        return
-
-    all_pairs = positive_pairs + negative_pairs
-    labeled = split_pairs(all_pairs, rng)
-
-    n_pos = sum(1 for t in labeled if t[2] == t[3])  # person_a == person_b
-    n_neg = len(labeled) - n_pos
-    print(f"Total: {len(labeled)} pares ({n_pos} positivos, {n_neg} negativos).")
-
-    write_pairs_csv(labeled, PAIRS_DIR, PROJECT_ROOT)
-    print("Listo.")
+    all_keys: set[tuple[str, str]] = set()
+    for split in SPLITS:
+        split_images = [row for row in usable if row["split"] == split]
+        pairs = generate_split_pairs(split_images, counts[split], split, args.seed)
+        keys = {pair_key(str(row["image_a"]), str(row["image_b"])) for row in pairs}
+        if len(keys) != len(pairs) or all_keys.intersection(keys):
+            raise RuntimeError("Se detectaron pares duplicados durante la generación.")
+        all_keys.update(keys)
+        path = output_path(args.output_dir, split)
+        write_pairs(pairs, path)
+        positives = sum(int(row["label"]) == 1 for row in pairs)
+        print(f"{split:10s}: {len(pairs):4d} pares ({positives} positivos, {len(pairs)-positives} negativos) -> {path}")
 
 
 if __name__ == "__main__":
