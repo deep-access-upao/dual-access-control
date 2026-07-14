@@ -18,6 +18,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size",    type=int,   default=32,                    help="Tamaño del batch")
     parser.add_argument("--learning-rate", type=float, default=0.0001,                help="Tasa de aprendizaje")
     parser.add_argument("--model-name",    type=str,   default="siamese_model.keras", help="Nombre del archivo del modelo guardado")
+    parser.add_argument("--seed",          type=int,   default=42,                    help="Semilla del loader y los aumentos")
+    parser.add_argument(
+        "--no-augmentation",
+        action="store_true",
+        help="Desactiva los aumentos aleatorios del split de entrenamiento",
+    )
     args = parser.parse_args()
     args.model_name = _normalize_model_name(args.model_name)
     return args
@@ -73,7 +79,11 @@ def train_model(args: argparse.Namespace) -> None:
 
     # Los datasets se cargan primero para detectar CSVs faltantes antes de construir el modelo
     print("Cargando datasets...")
-    train_dataset = get_train_dataset(batch_size=args.batch_size)
+    train_dataset = get_train_dataset(
+        batch_size=args.batch_size,
+        augment=not args.no_augmentation,
+        seed=args.seed,
+    )
     val_dataset   = get_val_dataset(batch_size=args.batch_size)
 
     print("\nConstruyendo el modelo siamés...")
