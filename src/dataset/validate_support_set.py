@@ -1,182 +1,93 @@
-"""
-Valida la estructura del support set de referencias faciales sin leer contenido de imágenes.
+"""Valida referencias del support set y evita reutilizar imágenes de train."""
 
-Estructura esperada:
-    data/support_set/<person_id>/frontal.jpg
-    data/support_set/<person_id>/left.jpg
-    data/support_set/<person_id>/right.jpg
-
-Códigos de salida:
-    0 — support set vacío o todos los usuarios tienen referencias completas
-    1 — faltan referencias requeridas, hay archivos no soportados,
-        o (en modo --strict) el support set está vacío
-"""
+from __future__ import annotations
 
 import argparse
+import csv
+import hashlib
+import re
 import sys
 from pathlib import Path
 
-from src.config import SUPPORT_REFERENCE_VIEWS, SUPPORT_SET_DIR
+from src.config import DATASET_MANIFEST_PATH, SUPPORT_REFERENCE_VIEWS, SUPPORT_SET_DIR
 
-SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+REFERENCE_PATTERN = re.compile(
+    rf"^({'|'.join(SUPPORT_REFERENCE_VIEWS)})(?:_\d+)?$", re.IGNORECASE
+)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Valida la estructura del support set de referencias faciales."
-    )
-    parser.add_argument(
-        "--strict",
-        action="store_true",
-        help="Retorna código de salida 1 si el support set está vacío.",
-    )
+    parser = argparse.ArgumentParser(description="Valida el support set y su separación de train.")
+    parser.add_argument("--strict", action="store_true", help="Falla si el support set está vacío.")
+    parser.add_argument("--manifest", type=Path, default=DATASET_MANIFEST_PATH)
     return parser.parse_args()
 
 
-def find_user_directories() -> tuple[list[Path], list[str]]:
-    """
-    Retorna (user_dirs, unexpected_files).
-    unexpected_files son entradas directamente en SUPPORT_SET_DIR que no son carpetas de usuario.
-    """
-    user_dirs = []
-    unexpected_files = []
-    for entry in sorted(SUPPORT_SET_DIR.iterdir()):
-        if entry.is_dir():
-            user_dirs.append(entry)
-        else:
-            unexpected_files.append(entry.name)
-    return user_dirs, unexpected_files
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for block in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
-def find_reference_for_view(user_dir: Path, view: str) -> str | None:
-    """Busca el archivo de referencia para una vista dada; retorna el nombre si existe, None si no."""
-    for ext in SUPPORTED_IMAGE_EXTENSIONS:
-        candidate = user_dir / f"{view}{ext}"
-        if candidate.is_file():
-            return candidate.name
-    return None
+def training_hashes(manifest_path: Path) -> set[str]:
+    if not manifest_path.is_file():
+        return set()
+    with manifest_path.open(newline="", encoding="utf-8-sig") as file:
+        return {
+            row["sha256"] for row in csv.DictReader(file)
+            if row.get("status") == "usable" and row.get("split") == "train"
+        }
 
 
-def inspect_user_support_set(user_dir: Path) -> dict:
-    """Retorna un dict con found, missing y unsupported para un directorio de usuario."""
-    found = {}
-    missing = []
-
-    for view in SUPPORT_REFERENCE_VIEWS:
-        ref = find_reference_for_view(user_dir, view)
-        if ref:
-            found[view] = ref
-        else:
-            missing.append(view)
-
-    # Nombres de archivo válidos: cualquier combinación de vista requerida + extensión soportada
-    valid_names = {
-        f"{view}{ext}"
-        for view in SUPPORT_REFERENCE_VIEWS
-        for ext in SUPPORTED_IMAGE_EXTENSIONS
-    }
-    unsupported = [
-        entry.name
-        for entry in sorted(user_dir.iterdir())
-        if entry.is_file() and entry.name not in valid_names
-    ]
-
-    return {"found": found, "missing": missing, "unsupported": unsupported}
-
-
-def print_expected_structure() -> None:
-    print("Estructura esperada:")
-    print("  data/support_set/")
-    print("  └── <person_id>/")
-    for view in SUPPORT_REFERENCE_VIEWS:
-        print(f"        {view}.jpg")
-    print()
-    print(f"Extensiones soportadas: {', '.join(sorted(SUPPORTED_IMAGE_EXTENSIONS))}")
-
-
-def validate_support_set(strict: bool) -> int:
-    print("=== Validación del Support Set ===\n")
-
+def validate_support_set(strict: bool, manifest_path: Path = DATASET_MANIFEST_PATH) -> int:
+    print("=== Validación del support set ===")
     if not SUPPORT_SET_DIR.is_dir():
-        print(f"ERROR: Directorio de support set no encontrado: {SUPPORT_SET_DIR}")
-        print()
-        print_expected_structure()
+        print(f"ERROR: no existe {SUPPORT_SET_DIR}")
         return 1
 
-    user_dirs, unexpected_root_files = find_user_directories()
+    user_dirs = sorted(path for path in SUPPORT_SET_DIR.iterdir() if path.is_dir())
+    unexpected_root = [path for path in SUPPORT_SET_DIR.iterdir() if path.is_file() and path.name != ".gitkeep"]
+    if not user_dirs:
+        print("Support set vacío: preparado para una o más referencias por usuario.")
+        return 1 if strict or unexpected_root else 0
 
-    if not user_dirs and not unexpected_root_files:
-        print("El support set está vacío.")
-        print()
-        print_expected_structure()
-        return 1 if strict else 0
-
-    has_issues = bool(unexpected_root_files)
-
-    if unexpected_root_files:
-        print("Archivos inesperados directamente en data/support_set (se esperan solo carpetas de usuario):")
-        for name in unexpected_root_files:
-            print(f"  [INESPERADO] {name}")
-        print()
-
-    total_users = len(user_dirs)
-    complete_users = 0
-    incomplete_users = 0
-    total_missing = 0
-
+    train_hashes = training_hashes(manifest_path)
+    errors: list[str] = []
+    total_references = 0
     for user_dir in user_dirs:
-        result = inspect_user_support_set(user_dir)
-        found = result["found"]
-        missing = result["missing"]
-        unsupported = result["unsupported"]
+        references: list[Path] = []
+        for path in sorted(user_dir.iterdir()):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in IMAGE_EXTENSIONS or not REFERENCE_PATTERN.match(path.stem):
+                errors.append(f"{user_dir.name}/{path.name}: nombre o extensión no soportada")
+                continue
+            references.append(path)
+            if sha256(path) in train_hashes:
+                errors.append(f"{user_dir.name}/{path.name}: reutiliza una imagen de entrenamiento")
+        if not references:
+            errors.append(f"{user_dir.name}: no contiene referencias válidas")
+        total_references += len(references)
+        print(f"{user_dir.name}: {len(references)} referencia(s)")
 
-        user_ok = not missing and not unsupported
-        if user_ok:
-            complete_users += 1
-        else:
-            incomplete_users += 1
-            has_issues = True
-
-        total_missing += len(missing)
-
-        print(f"  Usuario: {user_dir.name}")
-
-        if found:
-            print("    Referencias encontradas:")
-            for view, filename in found.items():
-                print(f"      [OK] {view}: {filename}")
-        else:
-            print("    Referencias encontradas: ninguna")
-
-        if missing:
-            print("    Referencias faltantes:")
-            for view in missing:
-                print(f"      [FALTANTE] {view}")
-        else:
-            print("    Referencias faltantes: ninguna")
-
-        if unsupported:
-            print("    Archivos no soportados:")
-            for name in unsupported:
-                print(f"      [NO SOPORTADO] {name}")
-        else:
-            print("    Archivos no soportados: ninguno")
-
-        print()
-
-    print("=== Resumen ===")
-    print(f"  Usuarios encontrados  : {total_users}")
-    print(f"  Usuarios completos    : {complete_users}")
-    print(f"  Usuarios incompletos  : {incomplete_users}")
-    print(f"  Referencias faltantes : {total_missing}")
-
-    return 1 if has_issues else 0
+    if unexpected_root:
+        errors.append("hay archivos inesperados en la raíz de data/support_set")
+    print(f"Usuarios: {len(user_dirs)}; referencias: {total_references}")
+    if errors:
+        print("VALIDACIÓN FALLIDA")
+        for error in errors:
+            print(f"  - {error}")
+        return 1
+    print("VALIDACIÓN APROBADA: ninguna referencia coincide con train.")
+    return 0
 
 
 def main() -> None:
     args = parse_args()
-    exit_code = validate_support_set(strict=args.strict)
-    sys.exit(exit_code)
+    sys.exit(validate_support_set(args.strict, args.manifest))
 
 
 if __name__ == "__main__":

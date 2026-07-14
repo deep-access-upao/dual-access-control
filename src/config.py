@@ -12,6 +12,7 @@ RAW_DATASET_DIR = DATA_DIR / "raw"
 PROCESSED_DATASET_DIR = DATA_DIR / "processed"
 PAIRS_DIR = DATA_DIR / "pairs"
 SUPPORT_SET_DIR = DATA_DIR / "support_set"
+DATASET_MANIFEST_PATH = DATA_DIR / "dataset_manifest.csv"
 
 # models/
 MODELS_DIR = PROJECT_ROOT / "models"

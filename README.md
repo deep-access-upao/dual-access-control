@@ -169,3 +169,7 @@ Conexiones previstas:
 El proyecto utiliza imágenes faciales reales de los integrantes o voluntarios. Por ello, los videos, imágenes procesadas, pares de entrenamiento, imágenes de referencia y modelos entrenados no deben subirse al repositorio.
 
 Las carpetas relacionadas al dataset se mantienen en GitHub únicamente mediante archivos `.gitkeep`.
+
+## Protocolo experimental del dataset
+
+La preparación reproducible, el split por video previo a la generación de pares y la auditoría automática de fugas se describen en [docs/dataset_protocol.md](docs/dataset_protocol.md).

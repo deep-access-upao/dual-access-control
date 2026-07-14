@@ -17,6 +17,7 @@ data/raw/*
 data/processed/*
 data/pairs/*
 data/support_set/*
+data/dataset_manifest.csv
 
 !data/raw/.gitkeep
 !data/processed/.gitkeep
