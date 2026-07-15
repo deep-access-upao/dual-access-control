@@ -136,6 +136,19 @@ python -m src.inference.cli verify-references --capture captura.jpg --references
 
 La guía completa, incluidos errores, RFID, privacidad, limitaciones y regeneración segura, está en [docs/inference_package.md](docs/inference_package.md).
 
+## Demo web con RFID simulado
+
+La sesión 7A incorpora una interfaz FastAPI para registrar usuarios y referencias,
+simular un UID RFID, verificar el rostro y consultar el historial local. La base de
+datos y las imágenes se guardan bajo `data/demo/` y están excluidas de Git.
+
+```powershell
+python -m src.web.app
+```
+
+Luego abre `http://127.0.0.1:8000`. Consulta la guía completa en
+[docs/web_demo.md](docs/web_demo.md).
+
 ## Alcance actual: Fase 1
 
 En la primera fase, el sistema funcionará completamente desde la laptop, sin depender del hardware físico.

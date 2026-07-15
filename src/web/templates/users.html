@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Usuarios{% endblock %}
+{% block content %}
+<section class="page-heading split-heading">
+  <div><p class="eyebrow">Directorio local</p><h1>Usuarios</h1></div>
+  <a class="button" href="/users/new">Registrar usuario</a>
+</section>
+{% if success %}<div class="alert success">{{ success }}</div>{% endif %}
+{% if error %}<div class="alert error">{{ error }}</div>{% endif %}
+<section class="card table-card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nombre</th><th>UID RFID</th><th>Estado</th><th>Referencias</th><th>Registro</th><th>Acción</th></tr></thead>
+      <tbody>
+      {% for user in users %}
+        <tr>
+          <td>{{ user.full_name }}</td>
+          <td><code>{{ user.rfid_uid }}</code></td>
+          <td><span class="badge {{ 'active' if user.is_active else 'inactive' }}">{{ 'Activo' if user.is_active else 'Inactivo' }}</span></td>
+          <td><a href="/users/{{ user.id }}/references">{{ user.reference_count }} foto(s)</a></td>
+          <td>{{ user.created_at }}</td>
+          <td><form action="/users/{{ user.id }}/toggle" method="post"><button class="small secondary" type="submit">{{ 'Desactivar' if user.is_active else 'Activar' }}</button></form></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="empty-state">Todavía no hay usuarios registrados.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

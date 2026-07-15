@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Verificar acceso{% endblock %}
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">RFID simulado + verificación facial</p>
+  <h1>Verificar acceso</h1>
+  <p>El acceso solo se concede cuando el UID está activo y el rostro supera el umbral {{ "%.10f"|format(threshold) }}.</p>
+</section>
+
+{% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+
+<div class="grid two-columns">
+  <section class="card">
+    <h2>Nueva verificación</h2>
+    <form action="/verify" method="post" enctype="multipart/form-data">
+      <label for="rfid_uid">UID RFID</label>
+      <input id="rfid_uid" name="rfid_uid" required placeholder="04:A1:B2:C3" autocomplete="off">
+
+      <label for="capture">Captura facial</label>
+      <input id="capture" name="capture" type="file" required accept=".jpg,.jpeg,.png,.webp,image/*">
+      <p class="hint">Carga un archivo o toma una foto con la cámara.</p>
+
+      <details class="camera-panel">
+        <summary>Usar cámara web</summary>
+        <video id="camera" autoplay playsinline></video>
+        <canvas id="canvas" hidden></canvas>
+        <div class="button-row">
+          <button type="button" class="secondary" id="start-camera">Activar cámara</button>
+          <button type="button" class="secondary" id="take-photo" disabled>Tomar captura</button>
+        </div>
+        <p id="camera-status" class="hint" aria-live="polite"></p>
+      </details>
+
+      <button type="submit">Evaluar acceso</button>
+    </form>
+  </section>
+
+  <section class="card result-card {% if result %}{{ result.access_decision|lower }}{% endif %}">
+    {% if result %}
+      <p class="eyebrow">Decisión</p>
+      <h2 class="decision">{{ result.access_decision }}</h2>
+      <dl class="result-list">
+        <div><dt>Motivo</dt><dd>{{ result.reason }}</dd></div>
+        <div><dt>Usuario RFID</dt><dd>{{ result.user.full_name if result.user else "No identificado" }}</dd></div>
+        <div><dt>Score</dt><dd>{{ "%.6f"|format(result.score) if result.score is not none else "No calculado" }}</dd></div>
+        <div><dt>Threshold</dt><dd>{{ "%.10f"|format(result.threshold) }}</dd></div>
+        <div><dt>Referencias usadas</dt><dd>{{ result.references_used }}</dd></div>
+      </dl>
+    {% else %}
+      <p class="empty-state">El resultado aparecerá aquí.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', path='/camera.js') }}" defer></script>{% endblock %}

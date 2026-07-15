@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Referencias de {{ user.full_name }}{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <p class="eyebrow">Support set</p>
+  <h1>Referencias de {{ user.full_name }}</h1>
+  <p>UID: <code>{{ user.rfid_uid }}</code>. Por privacidad solo se muestran los nombres internos, no las imágenes.</p>
+</section>
+<section class="card">
+  <ul class="reference-list">
+  {% for reference in references %}
+    <li><span>Referencia {{ loop.index }}</span><code>{{ reference.image_path.split('\\')[-1].split('/')[-1] }}</code><time>{{ reference.created_at }}</time></li>
+  {% else %}
+    <li class="empty-state">Este usuario no tiene referencias.</li>
+  {% endfor %}
+  </ul>
+  <a href="/users">Volver a usuarios</a>
+</section>
+{% endblock %}

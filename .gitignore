@@ -13,6 +13,10 @@ env/
 .env.*
 
 # Private data
+data/demo/*.sqlite3
+data/demo/reference_images/
+data/demo/captures/
+uploads/
 data/raw/*
 data/processed/*
 data/pairs/*
@@ -53,6 +57,7 @@ outputs/stress_tests_preview/*
 Thumbs.db
 
 # Distribution / packaging
+.pytest_cache/
 dist/
 build/
 *.egg-info/

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Historial{% endblock %}
+{% block content %}
+<section class="page-heading"><p class="eyebrow">Auditoría local</p><h1>Historial de eventos</h1><p>Se muestran los 200 eventos más recientes.</p></section>
+<section class="card table-card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Fecha UTC</th><th>UID</th><th>Usuario</th><th>Score</th><th>Threshold</th><th>Decisión</th><th>Motivo</th><th>Refs.</th></tr></thead>
+      <tbody>
+      {% for event in events %}
+        <tr>
+          <td>{{ event.created_at }}</td><td><code>{{ event.rfid_uid }}</code></td><td>{{ event.user_name or '—' }}</td>
+          <td>{{ "%.6f"|format(event.score) if event.score is not none else '—' }}</td><td>{{ "%.10f"|format(event.threshold) }}</td>
+          <td><span class="badge {{ event.access_decision|lower }}">{{ event.access_decision }}</span></td><td>{{ event.reason }}</td><td>{{ event.references_used }}</td>
+        </tr>
+      {% else %}<tr><td colspan="8" class="empty-state">No hay eventos registrados.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
