@@ -32,6 +32,10 @@ from src.models.siamese_network import (
     compile_siamese_model,
     l1_distance,
 )
+from src.utils.tensorflow_runtime import (
+    SUPPORTED_DEVICES,
+    configure_tensorflow_runtime,
+)
 
 SUPPORTED_EXTENSIONS = {".keras", ".h5"}
 
@@ -43,6 +47,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=1e-4, help="Tasa de aprendizaje")
     parser.add_argument("--patience", type=int, default=5, help="Paciencia de early stopping")
     parser.add_argument("--seed", type=int, default=42, help="Semilla de Python, NumPy y TensorFlow")
+    parser.add_argument(
+        "--device",
+        choices=SUPPORTED_DEVICES,
+        default="auto",
+        help="Dispositivo TensorFlow: auto detecta GPU, cpu la desactiva y gpu la exige",
+    )
     parser.add_argument(
         "--experiment-name",
         type=str,
@@ -188,11 +198,13 @@ def training_config(
         "checkpoint": {"monitor": "val_loss", "save_best_only": True},
         "seed": args.seed,
         "tensorflow_version": tf.__version__,
+        "device": getattr(args, "device", "auto"),
         "model_path": f"models/saved_model/{args.experiment_name}.keras",
     }
 
 
 def train_model(args: argparse.Namespace) -> Path:
+    configure_tensorflow_runtime(getattr(args, "device", "auto"))
     set_reproducible_seed(args.seed)
     run_preflight_checks()
 

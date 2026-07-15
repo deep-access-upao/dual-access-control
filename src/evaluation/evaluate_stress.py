@@ -19,6 +19,10 @@ from src.config import EXPERIMENTS_DIR, SAVED_MODEL_DIR
 from src.dataset.dataloader import TEST_CSV, load_image, resolve_image_path
 from src.evaluation.evaluate import compute_metrics, load_calibrated_threshold, load_model
 from src.evaluation.stress_tests import STRESS_CONDITIONS, apply_stress_condition
+from src.utils.tensorflow_runtime import (
+    SUPPORTED_DEVICES,
+    configure_tensorflow_runtime,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,6 +33,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-path", type=Path, default=None)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--seed", type=int, default=2026)
+    parser.add_argument(
+        "--device",
+        choices=SUPPORTED_DEVICES,
+        default="auto",
+        help="Dispositivo TensorFlow: auto detecta GPU, cpu la desactiva y gpu la exige",
+    )
     return parser.parse_args()
 
 
@@ -144,11 +154,12 @@ def main() -> None:
         print(f"ERROR: falta modelo o test CSV: {model_path}; {TEST_CSV}")
         sys.exit(1)
     try:
+        configure_tensorflow_runtime(args.device)
         threshold = load_calibrated_threshold(experiment_dir)
-    except FileNotFoundError as error:
+        model = load_model(Path(model_path))
+    except (FileNotFoundError, RuntimeError) as error:
         print(f"ERROR: {error}")
         sys.exit(1)
-    model = load_model(Path(model_path))
     evaluate_stress(model, experiment_dir, threshold, args.batch_size, args.seed)
 
 

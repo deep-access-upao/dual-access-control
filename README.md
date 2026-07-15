@@ -122,6 +122,8 @@ Instalar dependencias:
 pip install -r requirements.txt
 ```
 
+Para detectar una GPU NVIDIA y preparar entrenamiento con TensorFlow en WSL2, consulta [docs/gpu_training_setup.md](docs/gpu_training_setup.md).
+
 ## Alcance actual: Fase 1
 
 En la primera fase, el sistema funcionará completamente desde la laptop, sin depender del hardware físico.
