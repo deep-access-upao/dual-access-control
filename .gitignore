@@ -13,10 +13,16 @@ env/
 .env.*
 
 # Private data
+data/demo/*.sqlite3
+data/demo/*.sqlite3-*
+data/demo/reference_images/
+data/demo/captures/
+uploads/
 data/raw/*
 data/processed/*
 data/pairs/*
 data/support_set/*
+data/dataset_manifest.csv
 
 !data/raw/.gitkeep
 !data/processed/.gitkeep
@@ -34,6 +40,8 @@ models/tflite/*
 outputs/plots/*
 outputs/metrics/*
 outputs/logs/*
+outputs/augmentation_preview/*
+outputs/stress_tests_preview/*
 
 !outputs/plots/.gitkeep
 !outputs/metrics/.gitkeep
@@ -50,6 +58,7 @@ outputs/logs/*
 Thumbs.db
 
 # Distribution / packaging
+.pytest_cache/
 dist/
 build/
 *.egg-info/

@@ -1,0 +1,12 @@
+user_id,images_detected,images_usable,images_rejected
+user_001,126,110,16
+user_002,239,238,1
+user_003,139,121,18
+user_004,120,120,0
+user_005,141,114,27
+user_006,183,176,7
+user_007,144,119,25
+user_008,194,177,17
+user_009,136,110,26
+user_010,139,126,13
+user_011,141,133,8

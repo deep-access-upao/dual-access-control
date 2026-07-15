@@ -1,0 +1,30 @@
+{
+  "created_at_utc": "2026-07-15T05:13:33.944905+00:00",
+  "experiment_name": "baseline_formal/baseline_con_aumento",
+  "architecture": "baseline siamés actual (sin cambios estructurales)",
+  "train_csv": "data/pairs/train_pairs.csv",
+  "validation_csv": "data/pairs/val_pairs.csv",
+  "train_augmentation": true,
+  "validation_augmentation": false,
+  "test_used_during_training": false,
+  "resume": true,
+  "initial_epoch": 6,
+  "epochs_max": 10,
+  "batch_size": 64,
+  "learning_rate": 0.0001,
+  "early_stopping": {
+    "monitor": "val_loss",
+    "patience": 5
+  },
+  "checkpoint": {
+    "monitor": "val_loss",
+    "save_best_only": true,
+    "best_epoch": 8,
+    "best_val_loss": 0.2569648027420044
+  },
+  "seed": 42,
+  "tensorflow_version": "2.21.0",
+  "model_path": "models/saved_model/baseline_formal/baseline_con_aumento.keras",
+  "epochs_completed": 10,
+  "stopped_reason": "epochs_max_reached"
+}

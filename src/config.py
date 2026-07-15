@@ -1,21 +1,23 @@
+import os
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Paths
+# Rutas
 # ---------------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # data/
-DATA_DIR = PROJECT_ROOT / "data"
+DATA_DIR = Path(os.environ.get("DUAL_ACCESS_DATA_DIR", PROJECT_ROOT / "data")).resolve()
 RAW_DATASET_DIR = DATA_DIR / "raw"
 PROCESSED_DATASET_DIR = DATA_DIR / "processed"
 PAIRS_DIR = DATA_DIR / "pairs"
 SUPPORT_SET_DIR = DATA_DIR / "support_set"
+DATASET_MANIFEST_PATH = DATA_DIR / "dataset_manifest.csv"
 
 # models/
 MODELS_DIR = PROJECT_ROOT / "models"
-SAVED_MODEL_DIR = MODELS_DIR / "saved"
+SAVED_MODEL_DIR = MODELS_DIR / "saved_model"
 TFLITE_MODEL_DIR = MODELS_DIR / "tflite"
 
 # outputs/
@@ -23,9 +25,10 @@ OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 LOGS_DIR = OUTPUTS_DIR / "logs"
 METRICS_DIR = OUTPUTS_DIR / "metrics"
 PLOTS_DIR = OUTPUTS_DIR / "plots"
+EXPERIMENTS_DIR = OUTPUTS_DIR / "experiments"
 
 # ---------------------------------------------------------------------------
-# Image configuration
+# Configuración de imagen
 # ---------------------------------------------------------------------------
 
 IMAGE_HEIGHT = 112
@@ -35,14 +38,14 @@ IMAGE_SIZE = (IMAGE_HEIGHT, IMAGE_WIDTH)
 INPUT_SHAPE = (IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_CHANNELS)
 
 # ---------------------------------------------------------------------------
-# Face views
+# Vistas de cara
 # ---------------------------------------------------------------------------
 
 SUPPORTED_FACE_VIEWS = ["frontal", "left", "right", "mixed"]
 SUPPORT_REFERENCE_VIEWS = ["frontal", "left", "right"]
 
 # ---------------------------------------------------------------------------
-# Model / inference settings
+# Configuración del modelo / inferencia
 # ---------------------------------------------------------------------------
 
 DEFAULT_SIMILARITY_THRESHOLD = 0.5
@@ -50,7 +53,7 @@ ACCESS_GRANTED = "GRANTED"
 ACCESS_DENIED = "DENIED"
 
 # ---------------------------------------------------------------------------
-# Serial settings (ESP32 integration — Phase 2+)
+# Configuración serial (integración ESP32 — Fase 2+)
 # ---------------------------------------------------------------------------
 
 DEFAULT_SERIAL_PORT = "COM3"
@@ -60,9 +63,9 @@ SERIAL_TIMEOUT_SECONDS = 2
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("=== Dual Access Control — Configuration ===\n")
+    print("=== Dual Access Control — Configuración ===\n")
 
-    print("--- Paths ---")
+    print("--- Rutas ---")
     print(f"PROJECT_ROOT          : {PROJECT_ROOT}")
     print(f"DATA_DIR              : {DATA_DIR}")
     print(f"RAW_DATASET_DIR       : {RAW_DATASET_DIR}")
@@ -77,16 +80,16 @@ if __name__ == "__main__":
     print(f"METRICS_DIR           : {METRICS_DIR}")
     print(f"PLOTS_DIR             : {PLOTS_DIR}")
 
-    print("\n--- Image ---")
+    print("\n--- Imagen ---")
     print(f"IMAGE_SIZE            : {IMAGE_SIZE}")
     print(f"INPUT_SHAPE           : {INPUT_SHAPE}")
     print(f"IMAGE_CHANNELS        : {IMAGE_CHANNELS}")
 
-    print("\n--- Face Views ---")
+    print("\n--- Vistas de cara ---")
     print(f"SUPPORTED_FACE_VIEWS  : {SUPPORTED_FACE_VIEWS}")
     print(f"SUPPORT_REFERENCE_VIEWS: {SUPPORT_REFERENCE_VIEWS}")
 
-    print("\n--- Inference ---")
+    print("\n--- Inferencia ---")
     print(f"SIMILARITY_THRESHOLD  : {DEFAULT_SIMILARITY_THRESHOLD}")
     print(f"ACCESS_GRANTED        : {ACCESS_GRANTED}")
     print(f"ACCESS_DENIED         : {ACCESS_DENIED}")

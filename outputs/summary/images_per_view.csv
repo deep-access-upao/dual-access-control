@@ -1,0 +1,5 @@
+view,images_detected,images_usable,images_rejected
+frontal,453,453,0
+left,420,371,49
+mixed,438,398,40
+right,391,322,69
