@@ -34,6 +34,10 @@ from src.dataset.dataloader import (
     get_val_dataset,
 )
 from src.models.siamese_network import l1_distance
+from src.utils.tensorflow_runtime import (
+    SUPPORTED_DEVICES,
+    configure_tensorflow_runtime,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,6 +48,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--model-path", type=Path, default=None)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument(
+        "--device",
+        choices=SUPPORTED_DEVICES,
+        default="auto",
+        help="Dispositivo TensorFlow: auto detecta GPU, cpu la desactiva y gpu la exige",
+    )
     parser.add_argument(
         "--criterion",
         choices=("max_f1",),
@@ -271,15 +281,16 @@ def main() -> None:
     if not model_path.is_file() or not required_csv.is_file():
         print(f"ERROR: falta modelo o CSV: {model_path}; {required_csv}")
         sys.exit(1)
-    experiment_dir.mkdir(parents=True, exist_ok=True)
-    model = load_model(model_path)
     try:
+        configure_tensorflow_runtime(args.device)
+        experiment_dir.mkdir(parents=True, exist_ok=True)
+        model = load_model(model_path)
         if args.mode == "calibrate":
             calibrate(model, experiment_dir, args.batch_size, args.criterion)
         else:
             threshold = args.threshold if args.threshold is not None else load_calibrated_threshold(experiment_dir)
             evaluate_test(model, experiment_dir, args.batch_size, threshold)
-    except (FileNotFoundError, ValueError) as error:
+    except (FileNotFoundError, ValueError, RuntimeError) as error:
         print(f"ERROR: {error}")
         sys.exit(1)
 
