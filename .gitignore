@@ -14,6 +14,7 @@ env/
 
 # Private data
 data/demo/*.sqlite3
+data/demo/*.sqlite3-*
 data/demo/reference_images/
 data/demo/captures/
 uploads/

@@ -66,6 +66,15 @@ class Database:
             connection.executescript(SCHEMA)
             connection.commit()
 
+    def is_available(self) -> bool:
+        """Comprueba que SQLite acepta consultas sin exponer datos de la demo."""
+        try:
+            with closing(self.connect()) as connection:
+                connection.execute("SELECT 1").fetchone()
+        except (OSError, sqlite3.Error):
+            return False
+        return True
+
     def create_user(self, full_name: str, rfid_uid: str) -> User:
         created_at = utc_now()
         try:

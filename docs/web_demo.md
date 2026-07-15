@@ -82,6 +82,19 @@ La web carga el verificador mediante `FaceVerifier.from_config`, llama
 la comparación facial ni cambia el threshold. Si el modelo o la inferencia fallan, el
 sistema falla de forma segura con `DENIED` y motivo `INFERENCE_ERROR`.
 
+## Alcance de la demo RFID
+
+El RFID se simula ingresando el UID en la interfaz web. Esta decisión permite validar
+la lógica completa de doble factor sin depender de un lector o del ESP32 físico. La
+regla implementada es la misma que se usaría con hardware real: primero se resuelve el
+UID, luego se verifica el rostro del usuario asociado y finalmente se registra la
+decisión.
+
+La arquitectura permite reemplazar en el futuro el campo web por una lectura real
+proveniente de ESP32/serial sin cambiar la regla de negocio. La integración física
+queda como extensión futura. Para el alcance actual, la demo valida suficientemente
+el flujo `UID → usuario → rostro → decisión → historial`.
+
 ## Historial
 
 La pantalla **Historial** muestra los 200 eventos más recientes: fecha UTC, UID,
@@ -108,3 +121,30 @@ python -m compileall -q src tests
 python -m unittest discover -s tests -v
 python -m src.inference.cli check-model --config config/model_config.json
 ```
+
+El endpoint `GET /health` valida que la configuración exista y que SQLite acepte
+consultas, y devuelve estado, nombre del modelo y threshold sin exponer rutas ni datos
+privados.
+
+Con la aplicación en ejecución, se puede validar primero solo la salud:
+
+```powershell
+python scripts/run_web_demo_smoke_test.py --health-only
+```
+
+Para el flujo HTTP completo, usar imágenes locales autorizadas que no se versionarán:
+
+```powershell
+python scripts/run_web_demo_smoke_test.py `
+  --base-url http://127.0.0.1:8000 `
+  --uid 01020304 `
+  --name "Usuario Demo 1" `
+  --reference "C:\ruta\user_001\frame_000001.jpg" `
+  --positive-capture "C:\ruta\user_001\frame_000002.jpg" `
+  --negative-capture "C:\ruta\user_002\frame_000001.jpg"
+```
+
+El flujo completo crea datos en la base privada local y copia las referencias al
+almacenamiento de la demo; conviene ejecutarlo sobre una base limpia o con un UID
+nuevo. La cámara web, el cambio manual a usuario inactivo y la iluminación difícil se
+validan con el [plan de pruebas integrales](integrated_demo_test_plan.md).
