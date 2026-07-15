@@ -1,5 +1,7 @@
 # Checklist de capturas y evidencias de la demo web
 
+> Este checklist se concentra en la web. Para métricas, archivos, comandos y puntos orales de toda la entrega, usa el [checklist final de presentación](final_presentation_checklist.md).
+
 ## Preparación segura
 
 - [ ] Usar nombre ficticio (`Usuario Demo 1`) y UID simulado (`01020304`).

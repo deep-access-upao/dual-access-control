@@ -1,5 +1,7 @@
 # Plan de pruebas integrales de la demo web
 
+> Este documento conserva el detalle operativo de los casos. La selección de evidencias y el guion de exposición están resumidos en el [checklist final de presentación](final_presentation_checklist.md).
+
 ## Objetivo y alcance
 
 Validar de extremo a extremo el registro, el RFID simulado, la verificación facial,
