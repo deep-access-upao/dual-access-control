@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import random
@@ -26,7 +27,11 @@ from src.config import (
 from src.dataset.audit_splits import audit, print_report
 from src.dataset.dataloader import TRAIN_CSV, VAL_CSV, get_train_dataset, get_val_dataset
 from src.dataset.validate_support_set import validate_support_set
-from src.models.siamese_network import build_siamese_model, compile_siamese_model
+from src.models.siamese_network import (
+    build_siamese_model,
+    compile_siamese_model,
+    l1_distance,
+)
 
 SUPPORTED_EXTENSIONS = {".keras", ".h5"}
 
@@ -57,6 +62,11 @@ def parse_args() -> argparse.Namespace:
         action="store_false",
         help="Desactiva aumentos en train",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Reanuda desde el checkpoint y el history.csv del experimento",
+    )
     parser.set_defaults(augmentation=True)
     return parser.parse_args()
 
@@ -79,25 +89,51 @@ def run_preflight_checks() -> None:
         raise RuntimeError("La validación del support set falló; el entrenamiento fue cancelado.")
 
 
-def create_callbacks(model_path: Path, history_csv: Path, patience: int) -> list:
+def create_callbacks(
+    model_path: Path,
+    history_csv: Path,
+    patience: int,
+    *,
+    append_history: bool = False,
+    initial_best_val_loss: float | None = None,
+) -> list:
+    checkpoint = tf.keras.callbacks.ModelCheckpoint(
+        filepath=str(model_path), monitor="val_loss", save_best_only=True, verbose=1
+    )
+    if initial_best_val_loss is not None:
+        checkpoint.best = initial_best_val_loss
     return [
-        tf.keras.callbacks.ModelCheckpoint(
-            filepath=str(model_path), monitor="val_loss", save_best_only=True, verbose=1
-        ),
+        checkpoint,
         tf.keras.callbacks.EarlyStopping(
-            monitor="val_loss", patience=patience, restore_best_weights=True, verbose=1
+            monitor="val_loss",
+            patience=patience,
+            restore_best_weights=True,
+            baseline=initial_best_val_loss,
+            verbose=1,
         ),
-        tf.keras.callbacks.CSVLogger(filename=str(history_csv), append=False),
+        tf.keras.callbacks.CSVLogger(filename=str(history_csv), append=append_history),
         tf.keras.callbacks.TerminateOnNaN(),
     ]
 
 
-def save_history(history: dict, experiment_dir: Path) -> None:
-    serializable = {key: [float(value) for value in values] for key, values in history.items()}
+def read_history(history_csv: Path) -> list[dict[str, str]]:
+    if not history_csv.is_file():
+        return []
+    with history_csv.open(newline="", encoding="utf-8") as file:
+        return list(csv.DictReader(file))
+
+
+def save_history(history_csv: Path, experiment_dir: Path) -> list[dict[str, str]]:
+    rows = read_history(history_csv)
+    metric_names = [key for key in rows[0] if key != "epoch"] if rows else []
+    serializable = {
+        key: [float(row[key]) for row in rows]
+        for key in metric_names
+    }
     with (experiment_dir / "history.json").open("w", encoding="utf-8") as file:
         json.dump(serializable, file, indent=2)
 
-    epochs = range(1, len(serializable.get("loss", [])) + 1)
+    epochs = [int(row["epoch"]) + 1 for row in rows]
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
     axes[0].plot(epochs, serializable.get("loss", []), label="train")
     axes[0].plot(epochs, serializable.get("val_loss", []), label="validation")
@@ -110,9 +146,30 @@ def save_history(history: dict, experiment_dir: Path) -> None:
     fig.tight_layout()
     fig.savefig(experiment_dir / "training_history.png", dpi=140)
     plt.close(fig)
+    return rows
 
 
-def training_config(args: argparse.Namespace, model_path: Path) -> dict:
+def resume_state(model_path: Path, history_csv: Path) -> tuple[tf.keras.Model, int, float]:
+    rows = read_history(history_csv)
+    if not model_path.is_file() or not rows:
+        raise FileNotFoundError(
+            "No se puede reanudar: falta el checkpoint o el history.csv del experimento."
+        )
+    initial_epoch = int(rows[-1]["epoch"]) + 1
+    best_val_loss = min(float(row["val_loss"]) for row in rows)
+    model = tf.keras.models.load_model(
+        str(model_path),
+        custom_objects={"l1_distance": l1_distance},
+        compile=True,
+    )
+    return model, initial_epoch, best_val_loss
+
+
+def training_config(
+    args: argparse.Namespace,
+    model_path: Path,
+    initial_epoch: int,
+) -> dict:
     return {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "experiment_name": args.experiment_name,
@@ -122,6 +179,8 @@ def training_config(args: argparse.Namespace, model_path: Path) -> dict:
         "train_augmentation": bool(args.augmentation),
         "validation_augmentation": False,
         "test_used_during_training": False,
+        "resume": bool(args.resume),
+        "initial_epoch": initial_epoch,
         "epochs_max": args.epochs,
         "batch_size": args.batch_size,
         "learning_rate": args.learning_rate,
@@ -141,8 +200,22 @@ def train_model(args: argparse.Namespace) -> Path:
     model_path = SAVED_MODEL_DIR / f"{args.experiment_name}.keras"
     experiment_dir.mkdir(parents=True, exist_ok=True)
     model_path.parent.mkdir(parents=True, exist_ok=True)
+    history_csv = experiment_dir / "history.csv"
 
-    config = training_config(args, model_path)
+    if args.resume:
+        model, initial_epoch, best_val_loss = resume_state(model_path, history_csv)
+        if initial_epoch >= args.epochs:
+            raise ValueError(
+                f"El experimento ya tiene {initial_epoch} épocas; --epochs={args.epochs} no agrega trabajo."
+            )
+    else:
+        model = compile_siamese_model(
+            build_siamese_model(), learning_rate=args.learning_rate
+        )
+        initial_epoch = 0
+        best_val_loss = None
+
+    config = training_config(args, model_path, initial_epoch)
     with (experiment_dir / "training_config.json").open("w", encoding="utf-8") as file:
         json.dump(config, file, indent=2, ensure_ascii=False)
 
@@ -154,6 +227,7 @@ def train_model(args: argparse.Namespace) -> Path:
     print(f"Épocas/batch/lr        : {args.epochs}/{args.batch_size}/{args.learning_rate}")
     print(f"Early stopping         : val_loss, patience={args.patience}")
     print(f"Semilla                : {args.seed}")
+    print(f"Reanudación            : {args.resume} (época inicial={initial_epoch})")
     print(f"Modelo                  : {model_path}")
     print(f"Resultados              : {experiment_dir}")
 
@@ -162,18 +236,23 @@ def train_model(args: argparse.Namespace) -> Path:
     )
     validation_dataset = get_val_dataset(batch_size=args.batch_size)
 
-    model = compile_siamese_model(build_siamese_model(), learning_rate=args.learning_rate)
     model.summary()
     history = model.fit(
         train_dataset,
         validation_data=validation_dataset,
         epochs=args.epochs,
-        callbacks=create_callbacks(model_path, experiment_dir / "history.csv", args.patience),
+        initial_epoch=initial_epoch,
+        callbacks=create_callbacks(
+            model_path,
+            history_csv,
+            args.patience,
+            append_history=args.resume,
+            initial_best_val_loss=best_val_loss,
+        ),
     )
-    model.save(str(model_path))
-    save_history(history.history, experiment_dir)
-    completed = len(history.history.get("loss", []))
-    validation_losses = history.history.get("val_loss", [])
+    rows = save_history(history_csv, experiment_dir)
+    completed = len(rows)
+    validation_losses = [float(row["val_loss"]) for row in rows]
     config["epochs_completed"] = completed
     config["stopped_reason"] = (
         "early_stopping" if completed < args.epochs else "epochs_max_reached"
