@@ -1,0 +1,7 @@
+model,criterion,threshold,condition,accuracy,f1,far,frr
+baseline_con_aumento,security_first,0.3128704726696014,low_light,0.782,0.7470997679814385,0.08,0.356
+baseline_con_aumento,security_first,0.3128704726696014,overexposure,0.832,0.8018867924528302,0.016,0.32
+baseline_con_aumento,security_first,0.3128704726696014,low_contrast,0.816,0.7909090909090909,0.064,0.304
+siamese_gap_l2_cosine,security_first,0.95511794090271,low_light,0.5,0.0,0.0,1.0
+siamese_gap_l2_cosine,security_first,0.95511794090271,overexposure,0.54,0.1785714285714285,0.02,0.9
+siamese_gap_l2_cosine,security_first,0.95511794090271,low_contrast,0.59,0.3050847457627119,0.0,0.82
