@@ -124,6 +124,18 @@ pip install -r requirements.txt
 
 Para detectar una GPU NVIDIA y preparar entrenamiento con TensorFlow en WSL2, consulta [docs/gpu_training_setup.md](docs/gpu_training_setup.md).
 
+## Inferencia modular del modelo final
+
+La inferencia reutilizable vive en `src/inference` y usa la configuración versionada `config/model_config.json`. El modelo final continúa siendo `baseline_formal/baseline_con_aumento`, con la regla `score >= 0.3128704727 => MATCH`.
+
+```powershell
+python -m src.inference.cli check-model --config config/model_config.json
+python -m src.inference.cli verify-pair --reference referencia.jpg --capture captura.jpg
+python -m src.inference.cli verify-references --capture captura.jpg --references frontal.jpg left.jpg right.jpg --strategy max
+```
+
+La guía completa, incluidos errores, RFID, privacidad, limitaciones y regeneración segura, está en [docs/inference_package.md](docs/inference_package.md).
+
 ## Alcance actual: Fase 1
 
 En la primera fase, el sistema funcionará completamente desde la laptop, sin depender del hardware físico.
