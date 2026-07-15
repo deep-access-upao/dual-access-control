@@ -173,7 +173,15 @@ def create_app(
 
     @app.get("/health")
     async def health():
-        return {"status": "ok", "threshold": service.config.threshold}
+        config_found = settings.config_path.is_file()
+        database_available = database.is_available()
+        return {
+            "status": "OK" if config_found and database_available else "ERROR",
+            "model_config_found": config_found,
+            "database_available": database_available,
+            "model_name": service.config.model_name,
+            "threshold": service.config.threshold,
+        }
 
     return app
 

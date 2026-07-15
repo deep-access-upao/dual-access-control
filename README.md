@@ -147,7 +147,10 @@ python -m src.web.app
 ```
 
 Luego abre `http://127.0.0.1:8000`. Consulta la guía completa en
-[docs/web_demo.md](docs/web_demo.md).
+[docs/web_demo.md](docs/web_demo.md). Para validar la sesión de forma reproducible,
+usa el [plan de pruebas integrales](docs/integrated_demo_test_plan.md), la
+[plantilla de resultados](docs/integrated_demo_results_template.md) y el
+[checklist de evidencias](docs/demo_evidence_checklist.md).
 
 ## Alcance actual: Fase 1
 
