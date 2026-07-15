@@ -66,6 +66,10 @@ Conviene continuar con `baseline_con_aumento`: mantiene el rendimiento limpio y 
 
 La comparación se regenera con `python -m src.evaluation.compare_baselines` después de evaluar ambas variantes.
 
+## Calibración posterior orientada a seguridad
+
+Una sesión posterior comparó operating points alternativos para `baseline_con_aumento` sin reentrenar ni modificar los resultados anteriores. La recomendación para la demo RFID + rostro es `0.3128704727`: en validation obtiene FAR 0.0200 y FRR 0.0280; en test limpio, FAR 0.0200 y FRR 0.0480. El análisis completo, incluidos los costos de un criterio FAR ≤ 1%, está en `docs/security_threshold_calibration.md`.
+
 ## Limitaciones y próxima sesión
 
 - Solo se evaluaron 11 personas y el dataset es pequeño.
