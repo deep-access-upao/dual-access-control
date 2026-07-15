@@ -1,0 +1,22 @@
+{
+  "threshold": 0.04553921893239021,
+  "num_pairs": 500,
+  "num_positives": 250,
+  "num_negatives": 250,
+  "accuracy": 0.972,
+  "precision": 0.9538461538461539,
+  "recall": 0.992,
+  "f1": 0.9725490196078431,
+  "far": 0.048,
+  "frr": 0.008,
+  "roc_auc": 0.983312,
+  "confusion_matrix": {
+    "tn": 238,
+    "fp": 12,
+    "fn": 2,
+    "tp": 248
+  },
+  "split": "validation",
+  "threshold_selection_criterion": "maximizar F1; desempatar por menor FAR y luego menor FRR",
+  "threshold_selected_with_test": false
+}

@@ -1,256 +1,287 @@
+"""Calibra el umbral con validation y evalúa una sola vez el test limpio."""
+
+from __future__ import annotations
+
 import argparse
 import json
 import sys
 from pathlib import Path
 from typing import Tuple
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
 from sklearn.metrics import (
     accuracy_score,
+    confusion_matrix,
+    f1_score,
+    precision_recall_curve,
     precision_score,
     recall_score,
-    f1_score,
-    confusion_matrix,
     roc_auc_score,
     roc_curve,
 )
 
-from src.config import (
-    DEFAULT_SIMILARITY_THRESHOLD,
-    METRICS_DIR,
-    PLOTS_DIR,
-    SAVED_MODEL_DIR,
+from src.config import EXPERIMENTS_DIR, SAVED_MODEL_DIR
+from src.dataset.dataloader import (
+    TEST_CSV,
+    VAL_CSV,
+    get_test_dataset,
+    get_val_dataset,
 )
-from src.dataset.dataloader import TEST_CSV, get_test_dataset
-
-
-METRICS_REPORT_FILENAME = "evaluation_report.json"
-PREDICTIONS_FILENAME = "test_predictions.csv"
-CONFUSION_MATRIX_PLOT = "confusion_matrix.png"
-ROC_CURVE_PLOT = "roc_curve.png"
+from src.models.siamese_network import l1_distance
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluación de la Red Siamesa")
-    parser.add_argument("--model-path", type=str, default=None,                          help="Ruta directa al modelo entrenado")
-    parser.add_argument("--model-name", type=str, default="siamese_model.keras",         help="Nombre del archivo del modelo dentro de SAVED_MODEL_DIR")
-    parser.add_argument("--batch-size", type=int, default=32,                            help="Tamaño del batch para la evaluación")
-    parser.add_argument("--threshold",  type=float, default=DEFAULT_SIMILARITY_THRESHOLD, help="Umbral de similitud para clasificar como GRANTED")
+    parser = argparse.ArgumentParser(description="Calibración y evaluación formal del baseline")
+    parser.add_argument("--mode", choices=("calibrate", "test"), required=True)
+    parser.add_argument(
+        "--experiment-name", default="baseline_formal/baseline_con_aumento"
+    )
+    parser.add_argument("--model-path", type=Path, default=None)
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument(
+        "--criterion",
+        choices=("max_f1",),
+        default="max_f1",
+        help="Criterio aplicado exclusivamente a validation",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Umbral explícito para test; por defecto se lee threshold.json",
+    )
     return parser.parse_args()
 
 
-def resolve_model_path(model_path: str | None, model_name: str) -> Path:
-    if model_path:
-        return Path(model_path)
-    return SAVED_MODEL_DIR / model_name
+def resolve_paths(args: argparse.Namespace) -> tuple[Path, Path]:
+    experiment_dir = EXPERIMENTS_DIR / args.experiment_name
+    model_path = args.model_path or SAVED_MODEL_DIR / f"{args.experiment_name}.keras"
+    return Path(model_path), experiment_dir
 
 
-def ensure_output_directories() -> None:
-    for directory in (METRICS_DIR, PLOTS_DIR):
-        directory.mkdir(parents=True, exist_ok=True)
+def load_model(model_path: Path) -> tf.keras.Model:
+    return tf.keras.models.load_model(
+        str(model_path), custom_objects={"l1_distance": l1_distance}, compile=False
+    )
 
 
 def collect_predictions(
-    model: tf.keras.Model,
-    dataset: tf.data.Dataset,
+    model: tf.keras.Model, dataset: tf.data.Dataset
 ) -> Tuple[np.ndarray, np.ndarray]:
-    # Se itera manualmente para conservar y_true alineado con y_score batch a batch
-    scores_batches = []
-    labels_batches = []
-
+    scores_batches, labels_batches = [], []
     for (image_a, image_b), labels in dataset:
-        batch_scores = model.predict_on_batch([image_a, image_b])
-        scores_batches.append(np.asarray(batch_scores).reshape(-1))
+        scores_batches.append(np.asarray(model.predict_on_batch([image_a, image_b])).reshape(-1))
         labels_batches.append(np.asarray(labels).reshape(-1))
-
     if not scores_batches:
         return np.array([]), np.array([])
-
-    y_score = np.concatenate(scores_batches).astype(np.float32)
-    y_true = np.concatenate(labels_batches).astype(np.int32)
-    return y_true, y_score
+    return (
+        np.concatenate(labels_batches).astype(np.int32),
+        np.concatenate(scores_batches).astype(np.float32),
+    )
 
 
 def compute_far_frr(cm: np.ndarray) -> Tuple[float, float]:
-    # cm tiene forma [[TN, FP], [FN, TP]] según el orden de clases [0, 1]
     tn, fp, fn, tp = cm.ravel()
-
-    # FAR: proporción de impostores aceptados sobre el total de impostores reales
-    far_denominator = fp + tn
-    far = float(fp) / float(far_denominator) if far_denominator > 0 else 0.0
-
-    # FRR: proporción de genuinos rechazados sobre el total de genuinos reales
-    frr_denominator = fn + tp
-    frr = float(fn) / float(frr_denominator) if frr_denominator > 0 else 0.0
-
+    far = float(fp / (fp + tn)) if fp + tn else 0.0
+    frr = float(fn / (fn + tp)) if fn + tp else 0.0
     return far, frr
 
 
-def compute_metrics(
-    y_true: np.ndarray,
-    y_score: np.ndarray,
-    threshold: float,
-) -> Tuple[dict, np.ndarray, np.ndarray]:
+def compute_metrics(y_true: np.ndarray, y_score: np.ndarray, threshold: float) -> dict:
     y_pred = (y_score >= threshold).astype(np.int32)
-
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
     far, frr = compute_far_frr(cm)
-
-    # ROC AUC solo es válido cuando hay ambas clases presentes en y_true
-    both_classes_present = len(np.unique(y_true)) == 2
-    roc_auc = float(roc_auc_score(y_true, y_score)) if both_classes_present else None
-
-    metrics_dict = {
+    both_classes = len(np.unique(y_true)) == 2
+    return {
         "threshold": float(threshold),
-        "num_samples": int(len(y_true)),
+        "num_pairs": int(len(y_true)),
         "num_positives": int(np.sum(y_true == 1)),
         "num_negatives": int(np.sum(y_true == 0)),
-        "accuracy":  float(accuracy_score(y_true, y_pred)),
+        "accuracy": float(accuracy_score(y_true, y_pred)),
         "precision": float(precision_score(y_true, y_pred, zero_division=0)),
-        "recall":    float(recall_score(y_true, y_pred, zero_division=0)),
-        "f1_score":  float(f1_score(y_true, y_pred, zero_division=0)),
+        "recall": float(recall_score(y_true, y_pred, zero_division=0)),
+        "f1": float(f1_score(y_true, y_pred, zero_division=0)),
         "far": far,
         "frr": frr,
-        "roc_auc": roc_auc,
+        "roc_auc": float(roc_auc_score(y_true, y_score)) if both_classes else None,
         "confusion_matrix": {
-            "true_negative":  int(cm[0, 0]),
-            "false_positive": int(cm[0, 1]),
-            "false_negative": int(cm[1, 0]),
-            "true_positive":  int(cm[1, 1]),
+            "tn": int(cm[0, 0]),
+            "fp": int(cm[0, 1]),
+            "fn": int(cm[1, 0]),
+            "tp": int(cm[1, 1]),
         },
     }
 
-    return metrics_dict, y_pred, cm
+
+def threshold_sweep(y_true: np.ndarray, y_score: np.ndarray) -> pd.DataFrame:
+    candidates = np.unique(np.concatenate(([0.0], y_score.astype(float), [1.0])))
+    rows = []
+    for threshold in candidates:
+        metrics = compute_metrics(y_true, y_score, float(threshold))
+        rows.append({key: metrics[key] for key in ("threshold", "accuracy", "precision", "recall", "f1", "far", "frr")})
+    return pd.DataFrame(rows)
 
 
-def save_metrics(metrics_dict: dict, output_path: Path) -> None:
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(metrics_dict, f, indent=2)
-    print(f"Métricas guardadas en: {output_path}")
+def select_threshold(search: pd.DataFrame, criterion: str = "max_f1") -> pd.Series:
+    if criterion != "max_f1":
+        raise ValueError(f"Criterio no soportado: {criterion}")
+    # En empates de F1 se prioriza menor FAR y luego menor FRR, coherente con control de acceso.
+    return search.sort_values(
+        ["f1", "far", "frr", "threshold"],
+        ascending=[False, True, True, False],
+        kind="stable",
+    ).iloc[0]
 
 
-def save_predictions(
-    y_true: np.ndarray,
-    y_score: np.ndarray,
-    y_pred: np.ndarray,
-    output_path: Path,
-) -> None:
-    df = pd.DataFrame({
-        "y_true":  y_true.astype(int),
-        "y_score": y_score.astype(float),
-        "y_pred":  y_pred.astype(int),
-    })
-    df.to_csv(output_path, index=False)
-    print(f"Predicciones guardadas en: {output_path}")
+def save_json(payload: dict, path: Path) -> None:
+    with path.open("w", encoding="utf-8") as file:
+        json.dump(payload, file, indent=2, ensure_ascii=False)
 
 
-def plot_confusion_matrix(cm: np.ndarray, output_path: Path) -> None:
+def save_predictions(y_true, y_score, threshold: float, path: Path) -> None:
+    pd.DataFrame(
+        {
+            "y_true": y_true.astype(int),
+            "y_score": y_score.astype(float),
+            "y_pred": (y_score >= threshold).astype(int),
+        }
+    ).to_csv(path, index=False)
+
+
+def plot_confusion(metrics: dict, title: str, path: Path) -> None:
+    cm_dict = metrics["confusion_matrix"]
+    cm = np.array([[cm_dict["tn"], cm_dict["fp"]], [cm_dict["fn"], cm_dict["tp"]]])
     fig, ax = plt.subplots(figsize=(5, 4))
-    im = ax.imshow(cm, cmap="Blues")
-    ax.set_title("Matriz de confusión")
-    ax.set_xlabel("Predicción")
-    ax.set_ylabel("Etiqueta real")
-    ax.set_xticks([0, 1])
-    ax.set_yticks([0, 1])
-    ax.set_xticklabels(["DENIED (0)", "GRANTED (1)"])
-    ax.set_yticklabels(["DENIED (0)", "GRANTED (1)"])
-
-    # Etiquetas numéricas dentro de cada celda
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            ax.text(j, i, str(cm[i, j]), ha="center", va="center", color="black")
-
-    fig.colorbar(im, ax=ax)
+    image = ax.imshow(cm, cmap="Blues")
+    ax.set(title=title, xlabel="Predicción", ylabel="Etiqueta real")
+    ax.set_xticks([0, 1], ["Diferente", "Misma persona"])
+    ax.set_yticks([0, 1], ["Diferente", "Misma persona"])
+    for row in range(2):
+        for column in range(2):
+            ax.text(column, row, str(cm[row, column]), ha="center", va="center")
+    fig.colorbar(image, ax=ax)
     fig.tight_layout()
-    fig.savefig(output_path, dpi=150)
+    fig.savefig(path, dpi=140)
     plt.close(fig)
-    print(f"Matriz de confusión guardada en: {output_path}")
 
 
-def plot_roc_curve(y_true: np.ndarray, y_score: np.ndarray, output_path: Path) -> None:
+def plot_roc_pr(y_true: np.ndarray, y_score: np.ndarray, prefix: str, output_dir: Path) -> None:
     fpr, tpr, _ = roc_curve(y_true, y_score)
     auc_value = roc_auc_score(y_true, y_score)
-
     fig, ax = plt.subplots(figsize=(5, 4))
-    ax.plot(fpr, tpr, label=f"ROC (AUC = {auc_value:.4f})")
-    ax.plot([0, 1], [0, 1], linestyle="--", color="gray", label="Aleatorio")
-    ax.set_title("Curva ROC")
-    ax.set_xlabel("Tasa de falsos positivos (FAR)")
-    ax.set_ylabel("Tasa de verdaderos positivos (1 - FRR)")
-    ax.set_xlim(0.0, 1.0)
-    ax.set_ylim(0.0, 1.05)
-    ax.legend(loc="lower right")
+    ax.plot(fpr, tpr, label=f"AUC = {auc_value:.4f}")
+    ax.plot([0, 1], [0, 1], "--", color="gray")
+    ax.set(title=f"ROC — {prefix}", xlabel="FAR", ylabel="TPR (1 - FRR)")
+    ax.legend()
     fig.tight_layout()
-    fig.savefig(output_path, dpi=150)
+    fig.savefig(output_dir / f"{prefix}_roc_curve.png", dpi=140)
     plt.close(fig)
-    print(f"Curva ROC guardada en: {output_path}")
+
+    precision, recall, _ = precision_recall_curve(y_true, y_score)
+    fig, ax = plt.subplots(figsize=(5, 4))
+    ax.plot(recall, precision)
+    ax.set(title=f"Precision-Recall — {prefix}", xlabel="Recall", ylabel="Precision")
+    fig.tight_layout()
+    fig.savefig(output_dir / f"{prefix}_precision_recall_curve.png", dpi=140)
+    plt.close(fig)
 
 
-def _print_summary(metrics_dict: dict) -> None:
-    print("\n=== Resultados de la evaluación ===")
-    print(f"  muestras       : {metrics_dict['num_samples']} "
-          f"(positivas: {metrics_dict['num_positives']}, "
-          f"negativas: {metrics_dict['num_negatives']})")
-    print(f"  umbral         : {metrics_dict['threshold']:.4f}")
-    print(f"  accuracy       : {metrics_dict['accuracy']:.4f}")
-    print(f"  precision      : {metrics_dict['precision']:.4f}")
-    print(f"  recall         : {metrics_dict['recall']:.4f}")
-    print(f"  f1_score       : {metrics_dict['f1_score']:.4f}")
-    print(f"  FAR            : {metrics_dict['far']:.4f}")
-    print(f"  FRR            : {metrics_dict['frr']:.4f}")
-    roc_auc = metrics_dict["roc_auc"]
-    print(f"  ROC AUC        : {roc_auc:.4f}" if roc_auc is not None else "  ROC AUC        : N/A (solo una clase en y_true)")
+def print_metrics(label: str, metrics: dict) -> None:
+    print(f"\n=== {label} ===")
+    for key in ("num_pairs", "num_positives", "num_negatives", "threshold", "accuracy", "precision", "recall", "f1", "far", "frr", "roc_auc"):
+        print(f"{key:16s}: {metrics[key]}")
+    print(f"confusion_matrix: {metrics['confusion_matrix']}")
+
+
+def calibrate(model: tf.keras.Model, experiment_dir: Path, batch_size: int, criterion: str) -> dict:
+    print(f"CSV de calibration (validation, sin aumentos): {VAL_CSV}")
+    y_true, y_score = collect_predictions(model, get_val_dataset(batch_size=batch_size))
+    if y_true.size == 0:
+        raise ValueError("Validation está vacío")
+    search = threshold_sweep(y_true, y_score)
+    selected = select_threshold(search, criterion)
+    threshold = float(selected["threshold"])
+    metrics = compute_metrics(y_true, y_score, threshold)
+    metrics.update(
+        {
+            "split": "validation",
+            "threshold_selection_criterion": "maximizar F1; desempatar por menor FAR y luego menor FRR",
+            "threshold_selected_with_test": False,
+        }
+    )
+    search.to_csv(experiment_dir / "threshold_search.csv", index=False)
+    save_json(
+        {
+            "threshold": threshold,
+            "criterion": metrics["threshold_selection_criterion"],
+            "calibration_split": "validation",
+            "test_used": False,
+        },
+        experiment_dir / "threshold.json",
+    )
+    save_json(metrics, experiment_dir / "validation_metrics.json")
+    save_predictions(y_true, y_score, threshold, experiment_dir / "validation_predictions.csv")
+    plot_confusion(metrics, "Matriz de confusión — validation", experiment_dir / "validation_confusion_matrix.png")
+    plot_roc_pr(y_true, y_score, "validation", experiment_dir)
+    print_metrics("Calibración en validation", metrics)
+    return metrics
+
+
+def load_calibrated_threshold(experiment_dir: Path) -> float:
+    path = experiment_dir / "threshold.json"
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Falta {path}. Calibra primero con --mode calibrate; no se permite elegir el umbral con test."
+        )
+    with path.open(encoding="utf-8") as file:
+        return float(json.load(file)["threshold"])
+
+
+def evaluate_test(model: tf.keras.Model, experiment_dir: Path, batch_size: int, threshold: float) -> dict:
+    print(f"CSV de test limpio (sin aumentos): {TEST_CSV}")
+    y_true, y_score = collect_predictions(model, get_test_dataset(batch_size=batch_size))
+    if y_true.size == 0:
+        raise ValueError("Test está vacío")
+    metrics = compute_metrics(y_true, y_score, threshold)
+    metrics.update(
+        {
+            "split": "test_clean",
+            "threshold_source": "validation",
+            "random_augmentation": False,
+        }
+    )
+    save_json(metrics, experiment_dir / "test_metrics.json")
+    save_predictions(y_true, y_score, threshold, experiment_dir / "test_predictions.csv")
+    plot_confusion(metrics, "Matriz de confusión — test limpio", experiment_dir / "test_confusion_matrix.png")
+    plot_roc_pr(y_true, y_score, "test_clean", experiment_dir)
+    print_metrics("Evaluación final en test limpio", metrics)
+    return metrics
 
 
 def main() -> None:
     args = parse_args()
-
-    model_path = resolve_model_path(args.model_path, args.model_name)
-    if not model_path.exists():
-        print(f"Modelo no encontrado en: {model_path}")
-        print("Entrena el modelo primero ejecutando:")
-        print("    python -m src.training.train")
+    model_path, experiment_dir = resolve_paths(args)
+    required_csv = VAL_CSV if args.mode == "calibrate" else TEST_CSV
+    if not model_path.is_file() or not required_csv.is_file():
+        print(f"ERROR: falta modelo o CSV: {model_path}; {required_csv}")
         sys.exit(1)
-
-    if not TEST_CSV.exists():
-        print(f"CSV de test no encontrado en: {TEST_CSV}")
-        print("Genera los pares primero ejecutando:")
-        print("    python -m src.dataset.build_pairs")
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+    model = load_model(model_path)
+    try:
+        if args.mode == "calibrate":
+            calibrate(model, experiment_dir, args.batch_size, args.criterion)
+        else:
+            threshold = args.threshold if args.threshold is not None else load_calibrated_threshold(experiment_dir)
+            evaluate_test(model, experiment_dir, args.batch_size, threshold)
+    except (FileNotFoundError, ValueError) as error:
+        print(f"ERROR: {error}")
         sys.exit(1)
-
-    ensure_output_directories()
-
-    print(f"Cargando modelo desde: {model_path}")
-    model = tf.keras.models.load_model(str(model_path))
-
-    print("Cargando dataset de test...")
-    test_dataset = get_test_dataset(batch_size=args.batch_size)
-
-    print("Generando predicciones...")
-    y_true, y_score = collect_predictions(model, test_dataset)
-
-    if y_true.size == 0:
-        print("El dataset de test está vacío. No hay nada que evaluar.")
-        sys.exit(1)
-
-    metrics_dict, y_pred, cm = compute_metrics(y_true, y_score, args.threshold)
-    _print_summary(metrics_dict)
-
-    save_metrics(metrics_dict, METRICS_DIR / METRICS_REPORT_FILENAME)
-    save_predictions(y_true, y_score, y_pred, METRICS_DIR / PREDICTIONS_FILENAME)
-    plot_confusion_matrix(cm, PLOTS_DIR / CONFUSION_MATRIX_PLOT)
-
-    # La curva ROC requiere ambas clases para ser interpretable
-    if len(np.unique(y_true)) == 2:
-        plot_roc_curve(y_true, y_score, PLOTS_DIR / ROC_CURVE_PLOT)
-    else:
-        print("Curva ROC omitida: y_true solo contiene una clase.")
 
 
 if __name__ == "__main__":

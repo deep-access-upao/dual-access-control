@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -7,7 +8,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # data/
-DATA_DIR = PROJECT_ROOT / "data"
+DATA_DIR = Path(os.environ.get("DUAL_ACCESS_DATA_DIR", PROJECT_ROOT / "data")).resolve()
 RAW_DATASET_DIR = DATA_DIR / "raw"
 PROCESSED_DATASET_DIR = DATA_DIR / "processed"
 PAIRS_DIR = DATA_DIR / "pairs"
@@ -24,6 +25,7 @@ OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 LOGS_DIR = OUTPUTS_DIR / "logs"
 METRICS_DIR = OUTPUTS_DIR / "metrics"
 PLOTS_DIR = OUTPUTS_DIR / "plots"
+EXPERIMENTS_DIR = OUTPUTS_DIR / "experiments"
 
 # ---------------------------------------------------------------------------
 # Configuración de imagen
