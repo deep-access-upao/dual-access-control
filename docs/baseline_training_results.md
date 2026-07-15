@@ -23,7 +23,7 @@ La auditoría confirmó cero imágenes compartidas, cero videos compartidos, cer
 
 El entrenamiento se reanudó desde checkpoints completos después de suspensiones de la laptop. Se preservaron pesos, estado de Adam, mejor `val_loss` global e historial acumulado. `history.csv` contiene diez épocas completas. Las épocas 9 y 10 no mejoraron la época 8, por lo que todas las evaluaciones finales usan el checkpoint de época 8.
 
-Debido al costo CPU observado, la variante `baseline_sin_aumento` queda pendiente; no se comparan variantes incompletas.
+La variante `baseline_sin_aumento` se entrenó posteriormente desde cero con el mismo protocolo. Completó 10 épocas y su mejor checkpoint fue la época 5 (`val_loss` 0.322139). La comparación completa se encuentra en [baseline_comparison_results.md](baseline_comparison_results.md).
 
 ## Calibración del threshold
 
@@ -79,4 +79,4 @@ Las condiciones son deterministas (semilla 2026), usan los 500 pares de test y a
 
 El dataset contiene solo 11 personas y las pruebas de estrés son sintéticas; las métricas no sustituyen una validación con usuarios y condiciones reales. El threshold es bajo, aunque coherente con la distribución de scores del checkpoint, por lo que debe volver a verificarse cuando cambie el dataset o se entrene otra variante.
 
-La siguiente sesión recomendada es entrenar `baseline_sin_aumento` en WSL2/GPU o un entorno con más memoria, repetir exactamente la calibración/evaluación y comparar ambas variantes. Después conviene recolectar ejemplos reales de poca luz, sobreexposición y bajo contraste, que son las condiciones con mayor degradación.
+La comparación ya confirmó que los aumentos preservan el test limpio y mejoran ampliamente los stress tests. La siguiente sesión recomendada es recolectar ejemplos reales de poca luz, sobreexposición y bajo contraste, poblar un support set separado y repetir el protocolo con una segunda sesión de captura.
