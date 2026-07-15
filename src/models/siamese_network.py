@@ -44,6 +44,7 @@ def build_embedding_network(input_shape: tuple = INPUT_SHAPE) -> tf.keras.Model:
     return models.Model(inputs=inputs, outputs=embedding, name="embedding_network")
 
 
+@tf.keras.utils.register_keras_serializable(package="DualAccess")
 def l1_distance(embeddings: list) -> tf.Tensor:
     embedding_a, embedding_b = embeddings
     return tf.abs(embedding_a - embedding_b)

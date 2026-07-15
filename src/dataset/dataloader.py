@@ -4,6 +4,7 @@ from pathlib import Path
 
 from src.dataset.augmentations import augment_face_image
 from src.config import (
+    DATA_DIR,
     IMAGE_HEIGHT,
     IMAGE_WIDTH,
     IMAGE_CHANNELS,
@@ -14,6 +15,14 @@ from src.config import (
 TRAIN_CSV = PAIRS_DIR / "train_pairs.csv"
 VAL_CSV   = PAIRS_DIR / "val_pairs.csv"
 TEST_CSV  = PAIRS_DIR / "test_pairs.csv"
+
+
+def resolve_image_path(path: str) -> str:
+    """Resolve manifest paths even when data lives outside the worktree."""
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return str(candidate)
+    return str((DATA_DIR.parent / candidate).resolve())
 
 
 def load_image(path: str) -> tf.Tensor:
@@ -54,8 +63,8 @@ def create_pairs_dataset(
     _require_csv(csv_path)
 
     df = pd.read_csv(csv_path)
-    paths_a = df["image_a"].tolist()
-    paths_b = df["image_b"].tolist()
+    paths_a = [resolve_image_path(path) for path in df["image_a"].tolist()]
+    paths_b = [resolve_image_path(path) for path in df["image_b"].tolist()]
     labels  = df["label"].tolist()
 
     dataset = tf.data.Dataset.from_tensor_slices((paths_a, paths_b, labels))

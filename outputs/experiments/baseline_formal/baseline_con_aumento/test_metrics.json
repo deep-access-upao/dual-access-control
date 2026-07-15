@@ -1,0 +1,22 @@
+{
+  "threshold": 0.018788017332553864,
+  "num_pairs": 500,
+  "num_positives": 250,
+  "num_negatives": 250,
+  "accuracy": 0.98,
+  "precision": 0.9651162790697675,
+  "recall": 0.996,
+  "f1": 0.9803149606299213,
+  "far": 0.036,
+  "frr": 0.004,
+  "roc_auc": 0.983776,
+  "confusion_matrix": {
+    "tn": 241,
+    "fp": 9,
+    "fn": 1,
+    "tp": 249
+  },
+  "split": "test_clean",
+  "threshold_source": "validation",
+  "random_augmentation": false
+}
