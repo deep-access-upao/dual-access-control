@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Registrar usuario{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <p class="eyebrow">Support set privado</p>
+  <h1>Registrar usuario</h1>
+  <p>Asocia un UID único y una o más imágenes de referencia.</p>
+</section>
+{% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+<section class="card form-card">
+  <form action="/users" method="post" enctype="multipart/form-data">
+    <label for="full_name">Nombre completo</label>
+    <input id="full_name" name="full_name" required maxlength="120">
+    <label for="rfid_uid">UID RFID</label>
+    <input id="rfid_uid" name="rfid_uid" required placeholder="04:A1:B2:C3">
+    <label for="references">Fotos de referencia</label>
+    <input id="references" name="references" type="file" required multiple accept=".jpg,.jpeg,.png,.webp,image/*">
+    <p class="hint">Formatos: JPG, JPEG, PNG o WEBP. Máximo 10 MB por archivo.</p>
+    <button type="submit">Crear usuario</button>
+  </form>
+</section>
+{% endblock %}
