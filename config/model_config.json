@@ -1,0 +1,18 @@
+{
+  "model_name": "baseline_formal/baseline_con_aumento",
+  "model_path": "models/saved_model/baseline_formal/baseline_con_aumento.keras",
+  "threshold": 0.3128704727,
+  "input_size": [112, 112, 3],
+  "score_rule": "score >= threshold",
+  "positive_label": "MATCH",
+  "negative_label": "NO_MATCH",
+  "access_rule": "RFID conocido AND rostro verificado => GRANTED",
+  "threshold_origin": "Calibrado exclusivamente con validation en la sesión 4C usando el criterio security_first.",
+  "preprocessing": {
+    "decoder": "JPEG",
+    "color_space": "RGB",
+    "dtype": "float32",
+    "normalization": "divide_by_255",
+    "value_range": [0.0, 1.0]
+  }
+}
