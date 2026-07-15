@@ -1,5 +1,7 @@
 # Demo web con usuarios, support set y RFID simulado
 
+> Esta guía específica se complementa con la [guía final de uso](final_usage_guide.md) y la [metodología final](final_methodology.md). Para la exposición, consulta el [checklist final](final_presentation_checklist.md).
+
 ## Objetivo
 
 Esta demo local registra usuarios con un UID RFID y una o más fotos de referencia.

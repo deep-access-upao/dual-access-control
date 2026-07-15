@@ -1,5 +1,7 @@
 # Calibración del threshold orientada a seguridad
 
+> La decisión final y su relación con el resto del proyecto se sintetizan en la [metodología final](final_methodology.md) y el [notebook de presentación](../notebooks/99_project_summary.ipynb).
+
 ## Contexto
 
 El baseline seleccionado sigue siendo `baseline_formal/baseline_con_aumento` porque conserva el rendimiento en test limpio y supera ampliamente a la variante sin aumento en las pruebas de stress. Su threshold histórico, `0.0187880173`, fue elegido para maximizar F1 en validation. Ese criterio es útil como referencia general, pero no representa por sí solo el costo asimétrico de un control de acceso: un falso positivo acepta a un impostor, mientras un falso negativo obliga a un usuario legítimo a repetir la verificación o recurrir a un flujo alternativo.

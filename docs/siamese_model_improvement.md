@@ -1,5 +1,7 @@
 # Mejora controlada del modelo siamés
 
+> La comparación se conserva aquí con todo su detalle. La decisión de selección y las técnicas no implementadas se integran en la [metodología final](final_methodology.md) y la [matriz de rúbrica](rubric_coverage.md).
+
 ## Objetivo y protocolo
 
 La sesión 5 evaluó si una arquitectura con `GlobalAveragePooling2D`, embedding de 128 dimensiones normalizado con L2 y similitud coseno mejora el baseline formal. El problema objetivo no era reducir un FAR limpio que ya era razonable, sino bajar el FRR bajo poca luz, sobreexposición y bajo contraste sin degradar la seguridad.

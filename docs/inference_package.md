@@ -1,5 +1,7 @@
 # Paquete de inferencia del modelo final
 
+> La secuencia de instalación, CLI, web, tests y smoke test está consolidada en la [guía final de uso](final_usage_guide.md). La justificación experimental del operating point está en la [metodología final](final_methodology.md).
+
 ## Artefacto y operating point congelados
 
 - Modelo: `baseline_formal/baseline_con_aumento`.
