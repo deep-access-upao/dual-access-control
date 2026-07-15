@@ -1,0 +1,32 @@
+{
+  "created_at_utc": "2026-07-15T10:33:03.993856+00:00",
+  "experiment_name": "baseline_formal/siamese_gap_l2_cosine",
+  "model_variant": "gap_l2_cosine",
+  "architecture": "CNN propia con GlobalAveragePooling2D, embedding 128 normalizado L2 y similitud coseno",
+  "train_csv": "data/pairs/train_pairs.csv",
+  "validation_csv": "data/pairs/val_pairs.csv",
+  "train_augmentation": true,
+  "validation_augmentation": false,
+  "test_used_during_training": false,
+  "resume": false,
+  "initial_epoch": 0,
+  "epochs_max": 10,
+  "batch_size": 64,
+  "learning_rate": 0.0001,
+  "early_stopping": {
+    "monitor": "val_loss",
+    "patience": 5
+  },
+  "checkpoint": {
+    "monitor": "val_loss",
+    "save_best_only": true,
+    "best_epoch": 9,
+    "best_val_loss": 0.34026798605918884
+  },
+  "seed": 42,
+  "tensorflow_version": "2.21.0",
+  "device": "gpu",
+  "model_path": "models/saved_model/baseline_formal/siamese_gap_l2_cosine.keras",
+  "epochs_completed": 10,
+  "stopped_reason": "epochs_max_reached"
+}

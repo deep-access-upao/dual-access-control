@@ -32,6 +32,11 @@ from src.models.siamese_network import (
     compile_siamese_model,
     l1_distance,
 )
+from src.models.siamese_variants import (
+    ARCHITECTURE_DESCRIPTIONS,
+    SUPPORTED_MODEL_VARIANTS,
+    build_siamese_variant,
+)
 from src.utils.tensorflow_runtime import (
     SUPPORTED_DEVICES,
     configure_tensorflow_runtime,
@@ -41,7 +46,9 @@ SUPPORTED_EXTENSIONS = {".keras", ".h5"}
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Entrenamiento formal de la red siamesa baseline")
+    parser = argparse.ArgumentParser(
+        description="Entrenamiento formal de modelos siameses reproducibles"
+    )
     parser.add_argument("--epochs", type=int, default=10, help="Máximo de épocas")
     parser.add_argument("--batch-size", type=int, default=32, help="Tamaño del batch")
     parser.add_argument("--learning-rate", type=float, default=1e-4, help="Tasa de aprendizaje")
@@ -58,6 +65,14 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="baseline_formal/baseline_con_aumento",
         help="Subcarpeta dentro de outputs/experiments y models/saved_model",
+    )
+    parser.add_argument(
+        "--model-variant",
+        choices=SUPPORTED_MODEL_VARIANTS,
+        default="baseline",
+        help=(
+            "Arquitectura a entrenar; baseline conserva el comportamiento histórico"
+        ),
     )
     augmentation = parser.add_mutually_exclusive_group()
     augmentation.add_argument(
@@ -183,7 +198,8 @@ def training_config(
     return {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "experiment_name": args.experiment_name,
-        "architecture": "baseline siamés actual (sin cambios estructurales)",
+        "model_variant": args.model_variant,
+        "architecture": ARCHITECTURE_DESCRIPTIONS[args.model_variant],
         "train_csv": "data/pairs/train_pairs.csv",
         "validation_csv": "data/pairs/val_pairs.csv",
         "train_augmentation": bool(args.augmentation),
@@ -222,7 +238,8 @@ def train_model(args: argparse.Namespace) -> Path:
             )
     else:
         model = compile_siamese_model(
-            build_siamese_model(), learning_rate=args.learning_rate
+            build_siamese_variant(args.model_variant),
+            learning_rate=args.learning_rate,
         )
         initial_epoch = 0
         best_val_loss = None
@@ -239,6 +256,7 @@ def train_model(args: argparse.Namespace) -> Path:
     print(f"Épocas/batch/lr        : {args.epochs}/{args.batch_size}/{args.learning_rate}")
     print(f"Early stopping         : val_loss, patience={args.patience}")
     print(f"Semilla                : {args.seed}")
+    print(f"Variante               : {args.model_variant}")
     print(f"Reanudación            : {args.resume} (época inicial={initial_epoch})")
     print(f"Modelo                  : {model_path}")
     print(f"Resultados              : {experiment_dir}")

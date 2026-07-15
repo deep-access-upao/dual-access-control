@@ -34,6 +34,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Umbral fijado con validation; por defecto usa threshold.json",
+    )
+    parser.add_argument(
         "--device",
         choices=SUPPORTED_DEVICES,
         default="auto",
@@ -155,7 +161,11 @@ def main() -> None:
         sys.exit(1)
     try:
         configure_tensorflow_runtime(args.device)
-        threshold = load_calibrated_threshold(experiment_dir)
+        threshold = (
+            args.threshold
+            if args.threshold is not None
+            else load_calibrated_threshold(experiment_dir)
+        )
         model = load_model(Path(model_path))
     except (FileNotFoundError, RuntimeError) as error:
         print(f"ERROR: {error}")
