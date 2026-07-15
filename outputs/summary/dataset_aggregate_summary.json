@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "privacy": "Solo conteos agregados; sin nombres, imágenes, videos ni rutas privadas.",
+  "source": "Agregado local de solo lectura del manifiesto y CSV de pares privados; contrastado con docs/final_methodology.md.",
+  "dataset": {
+    "people": 11,
+    "videos": 44,
+    "images_detected": 1702,
+    "images_usable": 1544,
+    "images_rejected": 158,
+    "rejection_rate": 0.092832
+  },
+  "splits": [
+    {"split": "train", "images": 739, "videos": 22, "pairs": 4000, "positive_pairs": 2000, "negative_pairs": 2000},
+    {"split": "validation", "images": 400, "videos": 11, "pairs": 500, "positive_pairs": 250, "negative_pairs": 250},
+    {"split": "test", "images": 405, "videos": 11, "pairs": 500, "positive_pairs": 250, "negative_pairs": 250}
+  ],
+  "leakage_audit": {
+    "shared_images": 0,
+    "shared_videos": 0,
+    "duplicate_pairs": 0,
+    "cross_split_hashes": 0
+  },
+  "documented_rejection_reasons": [
+    {"reason": "no_face_detected_in_crop", "count": 79},
+    {"reason": "sin_detalle_en_manifest_historico", "count": 79}
+  ]
+}
