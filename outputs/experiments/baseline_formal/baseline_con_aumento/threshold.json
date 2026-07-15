@@ -1,5 +1,5 @@
 {
-  "threshold": 0.015727024525403976,
+  "threshold": 0.018788017332553864,
   "criterion": "maximizar F1; desempatar por menor FAR y luego menor FRR",
   "calibration_split": "validation",
   "test_used": false

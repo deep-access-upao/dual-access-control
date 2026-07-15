@@ -38,10 +38,10 @@ SUPPORTED_EXTENSIONS = {".keras", ".h5"}
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Entrenamiento formal de la red siamesa baseline")
-    parser.add_argument("--epochs", type=int, default=12, help="Máximo de épocas")
+    parser.add_argument("--epochs", type=int, default=10, help="Máximo de épocas")
     parser.add_argument("--batch-size", type=int, default=32, help="Tamaño del batch")
     parser.add_argument("--learning-rate", type=float, default=1e-4, help="Tasa de aprendizaje")
-    parser.add_argument("--patience", type=int, default=3, help="Paciencia de early stopping")
+    parser.add_argument("--patience", type=int, default=5, help="Paciencia de early stopping")
     parser.add_argument("--seed", type=int, default=42, help="Semilla de Python, NumPy y TensorFlow")
     parser.add_argument(
         "--experiment-name",

@@ -14,14 +14,14 @@ La auditoría confirmó cero imágenes compartidas, cero videos compartidos, cer
 - Validation: aumentos desactivados.
 - Optimizador: Adam, learning rate `0.0001`.
 - Batch size: 64.
-- Épocas: 6 máximas y 6 completas.
-- Early stopping: `val_loss`, paciencia 2.
-- Checkpoint: mejor `val_loss`; época 6, `0.2735352516`.
+- Épocas: 10 máximas y 10 completas.
+- Early stopping: `val_loss`, paciencia final 5.
+- Checkpoint: mejor `val_loss`; época 8, `0.2569648027`.
 - Semilla: 42 para Python, NumPy y TensorFlow.
 - Runtime: TensorFlow 2.21 en CPU sobre Windows nativo.
 - Modelo local: `models/saved_model/baseline_formal/baseline_con_aumento.keras` (~50.6 MB, ignorado por Git).
 
-Después de una suspensión de la laptop, las épocas 5 y 6 se reanudaron desde el checkpoint completo de la época 4. Antes de continuar se verificaron las 252 iteraciones de Adam (`63 pasos × 4 épocas`), se anexó el nuevo historial al existente y se preservó el mejor `val_loss` global. El entrenamiento terminó con código 0 y seis filas válidas en `history.csv`.
+El entrenamiento se reanudó desde checkpoints completos después de suspensiones de la laptop. Se preservaron pesos, estado de Adam, mejor `val_loss` global e historial acumulado. `history.csv` contiene diez épocas completas. Las épocas 9 y 10 no mejoraron la época 8, por lo que todas las evaluaciones finales usan el checkpoint de época 8.
 
 Debido al costo CPU observado, la variante `baseline_sin_aumento` queda pendiente; no se comparan variantes incompletas.
 
@@ -29,35 +29,35 @@ Debido al costo CPU observado, la variante `baseline_sin_aumento` queda pendient
 
 El threshold se seleccionó exclusivamente con validation. El criterio fue maximizar F1; ante empates, priorizar menor FAR y luego menor FRR, una decisión conservadora para control de acceso. Test y stress tests no participaron en la selección.
 
-Threshold seleccionado: `0.0157270245`.
+Threshold seleccionado: `0.0187880173`.
 
 | Métrica validation | Resultado |
 |---|---:|
 | Pares (positivos / negativos) | 500 (250 / 250) |
-| Accuracy | 0.9820 |
-| Precision | 0.9725 |
+| Accuracy | 0.9840 |
+| Precision | 0.9764 |
 | Recall | 0.9920 |
-| F1 | 0.9822 |
-| FAR | 0.0280 |
+| F1 | 0.9841 |
+| FAR | 0.0240 |
 | FRR | 0.0080 |
-| ROC AUC | 0.9880 |
-| Matriz TN / FP / FN / TP | 243 / 7 / 2 / 248 |
+| ROC AUC | 0.9853 |
+| Matriz TN / FP / FN / TP | 244 / 6 / 2 / 248 |
 
 ## Test limpio
 
-El test se evaluó con el threshold ya congelado. Estas métricas reemplazan a las métricas antiguas porque corresponden al protocolo sin fuga.
+El test se evaluó con el threshold ya congelado. Estas métricas reemplazan a todas las métricas anteriores porque corresponden al checkpoint final seleccionado mediante validation y al protocolo sin fuga.
 
 | Métrica test limpio | Resultado |
 |---|---:|
 | Pares (positivos / negativos) | 500 (250 / 250) |
-| Accuracy | 0.9740 |
-| Precision | 0.9575 |
-| Recall | 0.9920 |
-| F1 | 0.9745 |
-| FAR | 0.0440 |
-| FRR | 0.0080 |
-| ROC AUC | 0.9883 |
-| Matriz TN / FP / FN / TP | 239 / 11 / 2 / 248 |
+| Accuracy | 0.9800 |
+| Precision | 0.9651 |
+| Recall | 0.9960 |
+| F1 | 0.9803 |
+| FAR | 0.0360 |
+| FRR | 0.0040 |
+| ROC AUC | 0.9838 |
+| Matriz TN / FP / FN / TP | 241 / 9 / 1 / 249 |
 
 ## Pruebas de estrés separadas
 
@@ -65,15 +65,15 @@ Las condiciones son deterministas (semilla 2026), usan los 500 pares de test y a
 
 | Condición | Accuracy | F1 | FAR | FRR | ROC AUC |
 |---|---:|---:|---:|---:|---:|
-| Poca luz | 0.8060 | 0.8194 | 0.2680 | 0.1200 | 0.9124 |
-| Sobreexposición | 0.9120 | 0.9163 | 0.1400 | 0.0360 | 0.9710 |
-| Bajo contraste | 0.8980 | 0.9002 | 0.1240 | 0.0800 | 0.9583 |
-| Ruido | 0.9520 | 0.9533 | 0.0760 | 0.0200 | 0.9887 |
-| Blur | 0.9780 | 0.9785 | 0.0440 | 0.0000 | 0.9856 |
-| Rotación/recorte | 0.9720 | 0.9724 | 0.0440 | 0.0120 | 0.9922 |
-| Oclusión parcial | 0.9700 | 0.9706 | 0.0520 | 0.0080 | 0.9920 |
-| Lentes sintéticos | 0.9740 | 0.9745 | 0.0440 | 0.0080 | 0.9893 |
-| Sombra de barba sintética | 0.9760 | 0.9764 | 0.0400 | 0.0080 | 0.9882 |
+| Poca luz | 0.8440 | 0.8539 | 0.2240 | 0.0880 | 0.9204 |
+| Sobreexposición | 0.9360 | 0.9380 | 0.0960 | 0.0320 | 0.9730 |
+| Bajo contraste | 0.9120 | 0.9141 | 0.1120 | 0.0640 | 0.9566 |
+| Ruido | 0.9640 | 0.9646 | 0.0520 | 0.0200 | 0.9863 |
+| Blur | 0.9820 | 0.9822 | 0.0320 | 0.0040 | 0.9850 |
+| Rotación/recorte | 0.9780 | 0.9782 | 0.0320 | 0.0120 | 0.9902 |
+| Oclusión parcial | 0.9740 | 0.9745 | 0.0440 | 0.0080 | 0.9896 |
+| Lentes sintéticos | 0.9800 | 0.9803 | 0.0360 | 0.0040 | 0.9854 |
+| Sombra de barba sintética | 0.9820 | 0.9822 | 0.0320 | 0.0040 | 0.9872 |
 
 ## Limitaciones y siguiente sesión
 
